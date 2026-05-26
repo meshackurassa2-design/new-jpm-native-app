@@ -1,0 +1,422 @@
+// app/(tabs)/profile.tsx
+import React, { useEffect, useState } from 'react'
+import {
+  View, Text, TouchableOpacity, StyleSheet,
+  Image, ScrollView, ActivityIndicator
+} from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { router, useFocusEffect } from 'expo-router'
+import { Ionicons } from '@expo/vector-icons'
+import { createClient } from '../../lib/supabase'
+import { useAuth } from '../../lib/auth'
+import { PostItem, PostType } from '../../components/PostItem'
+import { Skeleton } from '../../components/Skeleton'
+
+export default function ProfileScreen() {
+  const { user } = useAuth()
+  const supabase = createClient()
+  const [profile, setProfile] = useState<any>(null)
+  const [posts, setPosts] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [followersCount, setFollowersCount] = useState(0)
+  const [followingCount, setFollowingCount] = useState(0)
+  const [monthlyViews, setMonthlyViews] = useState(0)
+  const [activeTab, setActiveTab] = useState<'posts' | 'replies' | 'media' | 'reposts' | 'likes' | 'jobs' | 'archive'>('posts')
+
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!user) return
+      let isActive = true
+
+      const fetch = async () => {
+        try {
+          const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+          const postSel = 'id, content, image_urls, created_at, creator_id, parent_id, settings, profiles:creator_id(id, full_name, username, avatar_url, is_verified), likes(count), comments(count), reposts(count)'
+          
+          const [
+            { data: prof, error: profErr },
+            { data: userPosts, error: postsErr },
+            { count: followers },
+            { count: following },
+            { data: viewsData },
+            { data: repostsRes, error: repErr },
+            { data: likesRes, error: likesErr },
+            { data: bookmarksRes, error: bookErr }
+          ] = await Promise.all([
+            supabase.from('profiles').select('*').eq('id', user.id).single(),
+            supabase.from('posts').select(postSel).eq('creator_id', user.id).order('created_at', { ascending: false }).limit(20),
+            supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', user.id),
+            supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', user.id),
+            supabase.from('posts').select('view_count').eq('creator_id', user.id).gte('created_at', startDate),
+            supabase.from('reposts').select(`created_at, user_id, post:posts(${postSel})`).eq('user_id', user.id).order('created_at', { ascending: false }).limit(20),
+            supabase.from('likes').select(`created_at, post:posts(${postSel})`).eq('user_id', user.id).order('created_at', { ascending: false }).limit(20),
+            supabase.from('bookmarks').select(`created_at, post:posts(${postSel})`).eq('user_id', user.id).order('created_at', { ascending: false }).limit(20)
+          ])
+
+          if (profErr) console.error('Profile fetch error:', profErr)
+          if (postsErr) console.error('Posts fetch error:', postsErr)
+          if (repErr) console.error('Reposts fetch error:', repErr)
+          if (likesErr) console.error('Likes fetch error:', likesErr)
+          if (bookErr) console.error('Bookmarks fetch error:', bookErr)
+
+          if (!isActive) return
+
+          setProfile(prof)
+          setFollowersCount(followers || 0)
+          setFollowingCount(following || 0)
+
+          // Merge unified feed
+          let combinedFeed: any[] = []
+
+          if (userPosts) {
+            combinedFeed = [...combinedFeed, ...userPosts.map((p: any) => ({
+              ...p,
+              is_repost: false,
+              likes_count: p.likes?.[0]?.count || 0,
+              comments_count: p.comments?.[0]?.count || 0,
+              reposts_count: p.reposts?.[0]?.count || 0
+            }))]
+          }
+
+          if (repostsRes) {
+            combinedFeed = [...combinedFeed, ...repostsRes.map((r: any) => {
+              const originalPost = Array.isArray(r.post) ? r.post[0] : r.post
+              if (!originalPost) return null
+              return {
+                ...originalPost,
+                feed_created_at: r.created_at,
+                is_repost: true,
+                likes_count: originalPost.likes?.[0]?.count || 0,
+                comments_count: originalPost.comments?.[0]?.count || 0,
+                reposts_count: originalPost.reposts?.[0]?.count || 0
+              }
+            }).filter(Boolean)]
+          }
+
+          if (likesRes) {
+            combinedFeed = [...combinedFeed, ...likesRes.map((l: any) => {
+              const originalPost = Array.isArray(l.post) ? l.post[0] : l.post
+              if (!originalPost) return null
+              return {
+                ...originalPost,
+                feed_created_at: l.created_at,
+                is_liked_tab: true,
+                likes_count: originalPost.likes?.[0]?.count || 0,
+                comments_count: originalPost.comments?.[0]?.count || 0,
+                reposts_count: originalPost.reposts?.[0]?.count || 0
+              }
+            }).filter(Boolean)]
+          }
+
+          if (bookmarksRes) {
+            combinedFeed = [...combinedFeed, ...bookmarksRes.map((b: any) => {
+              const originalPost = Array.isArray(b.post) ? b.post[0] : b.post
+              if (!originalPost) return null
+              return {
+                ...originalPost,
+                feed_created_at: b.created_at,
+                is_bookmarked_tab: true,
+                likes_count: originalPost.likes?.[0]?.count || 0,
+                comments_count: originalPost.comments?.[0]?.count || 0,
+                reposts_count: originalPost.reposts?.[0]?.count || 0
+              }
+            }).filter(Boolean)]
+          }
+
+          combinedFeed.sort((a, b) => new Date(b.feed_created_at || b.created_at).getTime() - new Date(a.feed_created_at || a.created_at).getTime())
+          
+          // Deduplicate
+          const uniqueFeed = combinedFeed.filter((v: any, i: number, a: any[]) => 
+            a.findIndex(t => t.id === v.id && t.is_repost === v.is_repost && t.is_liked_tab === v.is_liked_tab && t.is_bookmarked_tab === v.is_bookmarked_tab) === i
+          )
+
+          setPosts(uniqueFeed)
+          
+          const sum = viewsData?.reduce((acc, curr) => acc + (curr.view_count || 0), 0) || 0
+          setMonthlyViews(sum)
+        } catch (error) {
+          console.error("Error in profile fetch:", error)
+        } finally {
+          setLoading(false)
+        }
+      }
+      fetch()
+
+      // Realtime subscription for followers/following updates
+      const channel = supabase.channel(`public:follows:${user.id}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'follows', filter: `following_id=eq.${user.id}` }, () => {
+          supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', user.id)
+            .then(({ count }) => isActive && setFollowersCount(count || 0))
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'follows', filter: `follower_id=eq.${user.id}` }, () => {
+          supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', user.id)
+            .then(({ count }) => isActive && setFollowingCount(count || 0))
+        })
+        .subscribe()
+
+      // Realtime subscription for post view counts (analytics)
+      const postsChannel = supabase.channel(`public:posts:analytics:${user.id}`)
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'posts', filter: `creator_id=eq.${user.id}` }, () => {
+          const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+          supabase.from('posts').select('view_count').eq('creator_id', user.id).gte('created_at', startDate)
+            .then(({ data }) => {
+              if (isActive) {
+                const sum = data?.reduce((acc, curr) => acc + (curr.view_count || 0), 0) || 0
+                setMonthlyViews(sum)
+              }
+            })
+        })
+        .subscribe()
+
+      return () => {
+        isActive = false
+        supabase.removeChannel(channel)
+        supabase.removeChannel(postsChannel)
+      }
+    }, [user])
+  )
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.headerRow}>
+          <Skeleton width={120} height={20} />
+          <Skeleton width={28} height={28} borderRadius={14} />
+        </View>
+        <View style={styles.infoArea}>
+          <View style={styles.infoLeft}>
+            <Skeleton width="60%" height={24} style={{ marginBottom: 4 }} />
+            <Skeleton width="40%" height={16} style={{ marginBottom: 16 }} />
+            <Skeleton width="80%" height={14} style={{ marginBottom: 4 }} />
+            <Skeleton width="70%" height={14} />
+          </View>
+          <View style={styles.avatarWrap}>
+            <Skeleton width={76} height={76} borderRadius={38} />
+          </View>
+        </View>
+        <View style={[styles.followersRow, { marginVertical: 16 }]}>
+          <Skeleton width={100} height={14} />
+        </View>
+        <View style={styles.ctaRow}>
+          <Skeleton width="48%" height={36} borderRadius={18} />
+          <Skeleton width="48%" height={36} borderRadius={18} />
+        </View>
+        <View style={[styles.tabsScroll, { marginTop: 16, paddingHorizontal: 16, gap: 16, flexDirection: 'row' }]}>
+          <Skeleton width={60} height={30} borderRadius={15} />
+          <Skeleton width={60} height={30} borderRadius={15} />
+          <Skeleton width={60} height={30} borderRadius={15} />
+        </View>
+        <View style={{ marginTop: 20 }}>
+          {[1, 2].map(i => (
+            <View key={i} style={{ paddingHorizontal: 16, marginBottom: 24 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                <Skeleton width={44} height={44} borderRadius={22} />
+                <View style={{ marginLeft: 12, gap: 6 }}>
+                  <Skeleton width={120} height={16} />
+                  <Skeleton width={80} height={12} />
+                </View>
+              </View>
+              <Skeleton width="100%" height={14} style={{ marginBottom: 8 }} />
+              <Skeleton width="60%" height={14} />
+            </View>
+          ))}
+        </View>
+      </SafeAreaView>
+    )
+  }
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Header row */}
+        <View style={styles.headerRow}>
+          <Text style={styles.username}>@{profile?.username}</Text>
+          <View style={styles.headerActions}>
+            <TouchableOpacity onPress={() => router.push('/(settings)')} style={styles.iconBtn}>
+              <Ionicons name="menu-outline" size={28} color="#000" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Main Info Area */}
+        <View style={styles.infoArea}>
+          {/* Left: Name, Username, Bio */}
+          <View style={styles.infoLeft}>
+            <View style={styles.nameRow}>
+              <Text style={styles.fullName}>{profile?.full_name}</Text>
+              {profile?.is_verified && (
+                <Ionicons name="checkmark-circle" size={18} color="#2563eb" />
+              )}
+            </View>
+            <Text style={styles.username}>@{profile?.username || 'user'}</Text>
+            {profile?.bio ? <Text style={styles.bio}>{profile.bio}</Text> : null}
+          </View>
+
+          {/* Right: Avatar */}
+          <View style={styles.avatarWrap}>
+            {profile?.avatar_url ? (
+              <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
+            ) : (
+              <View style={[styles.avatar, styles.avatarFallback]}>
+                <Text style={styles.avatarInitial}>{profile?.full_name?.[0] || '?'}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+
+        {/* Insights Link */}
+        {monthlyViews !== null && monthlyViews > 0 && (
+          <TouchableOpacity style={styles.insightsLink} activeOpacity={0.7} onPress={() => router.push('/insights')}>
+            <Text style={styles.insightsText}>{monthlyViews} views in the last 30 days</Text>
+            <Ionicons name="chevron-forward" size={14} color="#71717a" />
+          </TouchableOpacity>
+        )}
+
+        {/* Followers & Website */}
+        <View style={styles.followersRow}>
+          <Text style={styles.followersText}>{followersCount} followers</Text>
+          {profile?.website_url ? (
+            <>
+              <Text style={styles.dot}>•</Text>
+              <Text style={styles.websiteText}>{profile.website_url.replace(/^https?:\/\//, '')}</Text>
+            </>
+          ) : null}
+        </View>
+
+        {/* Action Buttons */}
+        <View style={styles.ctaRow}>
+          <TouchableOpacity style={styles.btnOutline} onPress={() => router.push('/(settings)/edit-profile')} activeOpacity={0.7}>
+            <Text style={styles.btnOutlineText}>Edit profile</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.btnOutlineShare} activeOpacity={0.7}>
+            <Text style={styles.btnOutlineText}>Share profile</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Social links */}
+        {(profile?.instagram_url || profile?.tiktok_url || profile?.facebook_url) ? (
+          <View style={styles.socialRow}>
+            {profile?.instagram_url ? (
+              <Ionicons name="logo-instagram" size={22} color="#a1a1aa" />
+            ) : null}
+            {profile?.tiktok_url ? (
+              <Ionicons name="logo-tiktok" size={22} color="#a1a1aa" />
+            ) : null}
+            {profile?.facebook_url ? (
+              <Ionicons name="logo-facebook" size={22} color="#a1a1aa" />
+            ) : null}
+          </View>
+        ) : null}
+
+        {/* Dynamic Tabs */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll}>
+          {['posts', 'replies', 'media', 'reposts', 'likes', 'jobs', 'archive'].map(tab => (
+            <TouchableOpacity
+              key={tab}
+              style={[styles.tabBtn, activeTab === tab && styles.tabBtnActive]}
+              onPress={() => setActiveTab(tab as any)}
+            >
+              <Text style={[styles.tabBtnText, activeTab === tab && styles.tabBtnTextActive]}>
+                {tab === 'posts' ? 'Threads' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        {/* Posts feed */}
+        <View style={styles.feed}>
+          {(() => {
+            const displayPosts = posts.filter((post: any) => {
+              if (activeTab === 'jobs') return post.settings?.is_job === true
+              if (post.settings?.is_job === true) return false
+              
+              if (activeTab === 'reposts') return post.is_repost
+              if (activeTab === 'likes') return post.is_liked_tab
+              if (activeTab === 'archive') return post.is_bookmarked_tab
+              if (activeTab === 'media') return !post.is_repost && !post.is_liked_tab && !post.is_bookmarked_tab && (post.image_urls && post.image_urls.length > 0)
+              if (activeTab === 'replies') return !post.is_repost && !post.is_liked_tab && !post.is_bookmarked_tab && post.parent_id
+              
+              return !post.is_repost && !post.is_liked_tab && !post.is_bookmarked_tab
+            })
+
+            if (displayPosts.length === 0) {
+              return (
+                <View style={{ padding: 40, alignItems: 'center' }}>
+                  <Text style={{ color: '#a1a1aa' }}>No {activeTab === 'posts' ? 'threads' : activeTab} found.</Text>
+                </View>
+              )
+            }
+            return displayPosts.map(post => (
+              <PostItem key={`${post.id}-${post.is_repost}-${post.is_liked_tab}`} post={post as PostType} />
+            ))
+          })()}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  )
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#fff' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' },
+  headerRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4,
+  },
+  navTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '800', color: '#000' },
+  headerActions: { flexDirection: 'row', gap: 16, alignItems: 'center' },
+  iconBtn: { padding: 4 },
+  infoArea: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
+    paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12,
+  },
+  infoLeft: { flex: 1, paddingRight: 16 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
+  fullName: { fontSize: 24, fontWeight: '800', color: '#000', letterSpacing: -0.5 },
+  username: { fontSize: 15, fontWeight: '500', color: '#000', marginBottom: 8 },
+  bio: { fontSize: 14, color: '#000', lineHeight: 20, fontWeight: '500' },
+  
+  avatarWrap: { position: 'relative' },
+  avatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#f4f4f5' },
+  avatarFallback: { justifyContent: 'center', alignItems: 'center' },
+  avatarInitial: { fontSize: 32, fontWeight: '700', color: '#71717a' },
+
+  insightsLink: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 16, marginBottom: 16,
+  },
+  insightsText: { fontSize: 14, color: '#71717a', fontWeight: '600' },
+
+  followersRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 16, marginBottom: 20,
+  },
+  followersText: { fontSize: 14, color: '#71717a', fontWeight: '600' },
+  dot: { color: '#d4d4d8' },
+  websiteText: { fontSize: 14, color: '#71717a', fontWeight: '600' },
+
+  ctaRow: {
+    flexDirection: 'row', gap: 10,
+    paddingHorizontal: 16, paddingBottom: 16,
+  },
+  btnOutline: {
+    flex: 1, backgroundColor: '#fff', borderRadius: 10,
+    height: 36, justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1, borderColor: '#e4e4e7',
+  },
+  btnOutlineShare: {
+    flex: 1, backgroundColor: '#fff', borderRadius: 10,
+    height: 36, justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1, borderColor: '#e4e4e7',
+  },
+  btnOutlineText: { fontSize: 14, fontWeight: '700', color: '#000' },
+
+  socialRow: { flexDirection: 'row', gap: 16, paddingHorizontal: 16, paddingBottom: 16, alignItems: 'center' },
+
+  tabsScroll: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#f4f4f5' },
+  tabBtn: { paddingHorizontal: 16, paddingVertical: 12 },
+  tabBtnActive: { borderBottomWidth: 2, borderBottomColor: '#000' },
+  tabBtnText: { fontSize: 14, fontWeight: '600', color: '#a1a1aa' },
+  tabBtnTextActive: { color: '#000' },
+  feed: { paddingBottom: 40 },
+})
