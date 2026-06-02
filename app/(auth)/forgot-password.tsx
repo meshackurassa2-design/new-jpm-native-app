@@ -115,7 +115,15 @@ const getStyles = (colors: any) => StyleSheet.create({
     borderWidth: 1,
     borderColor: '#222',
   },
-  inner: { flex: 1, paddingHorizontal: 28, paddingTop: 60, zIndex: 10 },
+  inner: { 
+    flex: 1, 
+    paddingHorizontal: 28, 
+    paddingTop: 60, 
+    zIndex: 10,
+    width: '100%',
+    maxWidth: 420,
+    alignSelf: 'center'
+  },
   backBtn: { marginBottom: 32, width: 40, height: 40, justifyContent: 'center' },
   title: { fontSize: 32, fontWeight: '800', color: '#fff', marginBottom: 8 },
   subtitle: { fontSize: 16, color: '#999', lineHeight: 24 },

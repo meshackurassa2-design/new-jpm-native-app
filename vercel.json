@@ -1,0 +1,7 @@
+{
+  "name": "jpmjpm-official",
+  "buildCommand": "npx expo export -p web",
+  "outputDirectory": "dist",
+  "installCommand": "npm install --legacy-peer-deps",
+  "framework": "create-react-app"
+}

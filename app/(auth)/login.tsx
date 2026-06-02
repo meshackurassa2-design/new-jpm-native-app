@@ -143,7 +143,16 @@ const getStyles = (colors: any) => StyleSheet.create({
     borderWidth: 1,
     borderColor: '#222',
   },
-  inner: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 28, paddingVertical: 60, zIndex: 10 },
+  inner: { 
+    flexGrow: 1, 
+    justifyContent: 'center', 
+    paddingHorizontal: 28, 
+    paddingVertical: 60, 
+    zIndex: 10,
+    width: '100%',
+    maxWidth: 420,
+    alignSelf: 'center'
+  },
   title: { fontSize: 26, fontWeight: '800', color: '#fff', textAlign: 'center' },
   formGroup: {
     backgroundColor: '#0a0a0a',
