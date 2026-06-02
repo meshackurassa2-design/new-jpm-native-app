@@ -1,8 +1,10 @@
 // components/StoryCreator.tsx — Native story creation screen
+import { useTheme } from '../lib/theme';
 import React, { useState, useRef } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  Modal, Image, ActivityIndicator, Alert, Platform
+  Modal, Image, ActivityIndicator, Alert, Platform,
+  KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
@@ -22,6 +24,8 @@ interface Props {
 }
 
 export function StoryCreator({ onClose, onCreated }: Props) {
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => getStyles(colors), [colors]);
   const { user } = useAuth()
   const supabase = createClient()
   const insets = useSafeAreaInsets()
@@ -33,7 +37,7 @@ export function StoryCreator({ onClose, onCreated }: Props) {
   const [uploading, setUploading] = useState(false)
 
   const bgColor = BG_COLORS[bgColorIndex]
-  const textColor = bgColor === '#ffffff' ? '#000' : '#fff'
+  const textColor = bgColor === '#ffffff' ? '#000000' : '#ffffff'
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -104,93 +108,105 @@ export function StoryCreator({ onClose, onCreated }: Props) {
 
   return (
     <Modal visible animationType="slide" statusBarTranslucent onRequestClose={onClose}>
-      <View style={[styles.container, { backgroundColor: mode === 'image' ? '#000' : bgColor }]}>
-        {/* Background image preview */}
-        {mode === 'image' && imageUri ? (
-          <Image source={{ uri: imageUri }} style={styles.bgImage} resizeMode="cover" />
-        ) : null}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={[styles.container, { backgroundColor: mode === 'image' ? '#000000' : bgColor }]}>
+            {/* Background image preview */}
+            {mode === 'image' && imageUri ? (
+              <Image source={{ uri: imageUri }} style={styles.bgImage} resizeMode="cover" />
+            ) : null}
 
-        {/* Dark overlay for image mode */}
-        {mode === 'image' && <View style={styles.darkOverlay} />}
+            {/* Dark overlay for image mode */}
+            {mode === 'image' && <View style={styles.darkOverlay} />}
 
-        {/* Text input overlay */}
-        {mode === 'text' && (
-          <View style={styles.textCenter}>
-            <TextInput
-              style={[styles.textInput, { color: textColor }]}
-              value={text}
-              onChangeText={setText}
-              placeholder="Type something..."
-              placeholderTextColor={textColor === '#fff' ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.3)'}
-              multiline
-              maxLength={160}
-              textAlign="center"
-              autoFocus
-            />
+            {/* Text input overlay */}
+            {mode === 'text' && (
+              <View style={styles.textCenter}>
+                <TextInput
+                  style={[styles.textInput, { color: textColor }]}
+                  value={text}
+                  onChangeText={setText}
+                  placeholder="Type something..."
+                  placeholderTextColor={textColor === '#ffffff' ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.3)'}
+                  multiline
+                  maxLength={160}
+                  textAlign="center"
+                  autoFocus
+                />
+              </View>
+            )}
+
+            {/* Top controls */}
+            <View style={[styles.topBar, { paddingTop: insets.top + 12 }]}>
+              <TouchableOpacity style={styles.iconBtn} onPress={onClose}>
+                <Ionicons name="close" size={24} color="#fff" />
+              </TouchableOpacity>
+              {mode === 'text' && (
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <TouchableOpacity style={styles.iconBtn} onPress={() => Keyboard.dismiss()}>
+                    <Ionicons name="chevron-down" size={24} color="#fff" />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.iconBtn} onPress={cycleBg}>
+                    <Ionicons name="color-palette-outline" size={24} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+
+            {/* Bottom controls */}
+            <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 16 }]}>
+              {!hasContent && (
+                <View style={styles.modeRow}>
+                  <TouchableOpacity
+                    onPress={() => setMode('text')}
+                    style={[styles.modeBtn, mode === 'text' && styles.modeBtnActive]}
+                  >
+                    <Text style={styles.modeBtnText}>Aa Text</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={pickImage}
+                    style={[styles.modeBtn, mode === 'image' && styles.modeBtnActive]}
+                  >
+                    <Ionicons name="image-outline" size={18} color="#fff" />
+                    <Text style={styles.modeBtnText}> Photo</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {hasContent && (
+                <View style={styles.submitRow}>
+                  <TouchableOpacity style={styles.iconBtn} onPress={pickImage}>
+                    <Ionicons name="images-outline" size={22} color="#fff" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.submitBtn, uploading && { opacity: 0.6 }]}
+                    onPress={() => { Keyboard.dismiss(); handleSubmit() }}
+                    disabled={uploading}
+                    activeOpacity={0.85}
+                  >
+                    {uploading ? (
+                      <ActivityIndicator color="#000" size="small" />
+                    ) : (
+                      <>
+                        <Text style={styles.submitBtnText}>Your Story</Text>
+                        <Ionicons name="chevron-forward" size={16} color="#000" />
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
           </View>
-        )}
-
-        {/* Top controls */}
-        <View style={[styles.topBar, { paddingTop: insets.top + 12 }]}>
-          <TouchableOpacity style={styles.iconBtn} onPress={onClose}>
-            <Ionicons name="close" size={24} color="#fff" />
-          </TouchableOpacity>
-          {mode === 'text' && (
-            <TouchableOpacity style={styles.iconBtn} onPress={cycleBg}>
-              <Ionicons name="color-palette-outline" size={24} color="#fff" />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* Bottom controls */}
-        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 16 }]}>
-          {!hasContent && (
-            <View style={styles.modeRow}>
-              <TouchableOpacity
-                onPress={() => setMode('text')}
-                style={[styles.modeBtn, mode === 'text' && styles.modeBtnActive]}
-              >
-                <Text style={styles.modeBtnText}>Aa Text</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={pickImage}
-                style={[styles.modeBtn, mode === 'image' && styles.modeBtnActive]}
-              >
-                <Ionicons name="image-outline" size={18} color="#fff" />
-                <Text style={styles.modeBtnText}> Photo</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {hasContent && (
-            <View style={styles.submitRow}>
-              <TouchableOpacity style={styles.iconBtn} onPress={pickImage}>
-                <Ionicons name="images-outline" size={22} color="#fff" />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.submitBtn, uploading && { opacity: 0.6 }]}
-                onPress={handleSubmit}
-                disabled={uploading}
-                activeOpacity={0.85}
-              >
-                {uploading ? (
-                  <ActivityIndicator color="#000" size="small" />
-                ) : (
-                  <>
-                    <Text style={styles.submitBtnText}>Your Story</Text>
-                    <Ionicons name="chevron-forward" size={16} color="#000" />
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-      </View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
     </Modal>
   )
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: { flex: 1 },
   bgImage: { ...StyleSheet.absoluteFillObject },
   darkOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.3)' },
@@ -226,14 +242,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.15)',
   },
   modeBtnActive: { backgroundColor: 'rgba(255,255,255,0.35)' },
-  modeBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  modeBtnText: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
   submitRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
   },
   submitBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#fff', borderRadius: 28,
+    backgroundColor: '#ffffff', borderRadius: 28,
     paddingHorizontal: 20, paddingVertical: 12,
   },
-  submitBtnText: { color: '#000', fontSize: 15, fontWeight: '900' },
+  submitBtnText: { color: '#000000', fontSize: 15, fontWeight: '900' },
 })

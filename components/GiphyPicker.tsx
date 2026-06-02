@@ -1,3 +1,4 @@
+import { useTheme } from '../lib/theme';
 import React, { useState, useEffect } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
@@ -17,6 +18,8 @@ const PADDING = 16
 const IMAGE_SIZE = (width - PADDING * 3) / COLUMN_COUNT
 
 export function GiphyPicker({ visible, onGifSelect, onClose }: GiphyPickerProps) {
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => getStyles(colors), [colors]);
   const [search, setSearch] = useState('')
   const [gifs, setGifs] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
@@ -120,21 +123,21 @@ export function GiphyPicker({ visible, onGifSelect, onClose }: GiphyPickerProps)
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+const getStyles = (colors: any) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 16, paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#e4e4e7'
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border
   },
-  headerTitle: { fontSize: 16, fontWeight: '800', letterSpacing: 1, color: '#18181b' },
+  headerTitle: { fontSize: 16, fontWeight: '800', letterSpacing: 1, color: colors.text },
   closeBtn: { padding: 4 },
   searchContainer: {
     flexDirection: 'row', alignItems: 'center',
-    margin: 16, backgroundColor: '#f4f4f5', borderRadius: 12, paddingHorizontal: 12,
+    margin: 16, backgroundColor: colors.border, borderRadius: 12, paddingHorizontal: 12,
   },
   searchIcon: { marginRight: 8 },
-  searchInput: { flex: 1, paddingVertical: 12, fontSize: 16, color: '#000' },
+  searchInput: { flex: 1, paddingVertical: 12, fontSize: 16, color: colors.text },
   list: { padding: PADDING / 2 },
   gifItem: {
     padding: PADDING / 2,
@@ -143,11 +146,11 @@ const styles = StyleSheet.create({
     width: IMAGE_SIZE,
     height: IMAGE_SIZE,
     borderRadius: 8,
-    backgroundColor: '#f4f4f5',
+    backgroundColor: colors.border,
   },
   errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32, gap: 12 },
   errorTitle: { fontSize: 18, fontWeight: '800', color: '#ef4444', textTransform: 'uppercase' },
-  errorText: { fontSize: 14, color: '#71717a', textAlign: 'center', lineHeight: 20 },
+  errorText: { fontSize: 14, color: colors.textDim, textAlign: 'center', lineHeight: 20 },
   emptyContainer: { padding: 32, alignItems: 'center' },
-  emptyText: { color: '#a1a1aa', fontStyle: 'italic', fontSize: 14 },
+  emptyText: { color: colors.textDim, fontStyle: 'italic', fontSize: 14 },
 })

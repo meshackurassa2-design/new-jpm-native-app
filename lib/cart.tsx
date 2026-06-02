@@ -9,7 +9,9 @@ export interface CartItem {
   image_url?: string
   shopId: string
   shopName: string
+  shopCity?: string
   sellerId: string
+  settings?: any
 }
 
 interface CartContextType {

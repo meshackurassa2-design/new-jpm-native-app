@@ -15,11 +15,15 @@ export type ActionSheetOption = {
 type UIContextType = {
   showActionSheet: (title: string, options: ActionSheetOption[]) => void
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void
+  isTabBarVisible: boolean
+  setTabBarVisible: (visible: boolean) => void
 }
 
 const UIContext = createContext<UIContextType>({
   showActionSheet: () => {},
   showToast: () => {},
+  isTabBarVisible: true,
+  setTabBarVisible: () => {},
 })
 
 export function UIProvider({ children }: { children: ReactNode }) {
@@ -29,6 +33,9 @@ export function UIProvider({ children }: { children: ReactNode }) {
   const [toastMessage, setToastMessage] = useState('')
   const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('info')
   const toastAnim = useRef(new Animated.Value(-100)).current
+
+  // -- TAB BAR STATE --
+  const [isTabBarVisible, setTabBarVisible] = useState(true)
 
   // -- ACTION SHEET STATE --
   const [sheetTitle, setSheetTitle] = useState('')
@@ -88,7 +95,7 @@ export function UIProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <UIContext.Provider value={{ showActionSheet, showToast }}>
+    <UIContext.Provider value={{ showActionSheet, showToast, isTabBarVisible, setTabBarVisible }}>
       {children}
 
       {/* --- TOAST --- */}

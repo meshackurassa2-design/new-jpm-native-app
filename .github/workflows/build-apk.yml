@@ -2,12 +2,14 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ "master", "main" ]
-  workflow_dispatch:
+    branches: [ main, master ]
+  workflow_dispatch:  # Allows manual trigger from GitHub website
 
 jobs:
   build:
+    name: Build APK
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -15,30 +17,45 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '20'
           cache: 'npm'
 
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
+          distribution: 'temurin'
           java-version: '17'
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
-      - name: Expo Prebuild
-        run: npx expo prebuild --platform android --clean
+      - name: Create .env file
+        run: |
+          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env
+          echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env
+          echo "GIPHY_API_KEY=${{ secrets.GIPHY_API_KEY }}" >> .env
 
-      - name: Build APK
-        working-directory: android
-        run: ./gradlew assembleRelease
+      - name: Make Gradle executable
+        run: chmod +x android/gradlew
 
-      - name: Upload APK
+      - name: Build Debug APK
+        run: |
+          cd android
+          ./gradlew assembleDebug --no-daemon --stacktrace
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-release
-          path: android/app/build/outputs/apk/release/app-release.apk
+          name: jpm-app-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
+
+      - name: Show APK info
+        run: |
+          echo "✅ BUILD SUCCESS!"
+          ls -lh android/app/build/outputs/apk/debug/

@@ -1,4 +1,5 @@
 // app/(settings)/bookmarks.tsx
+import { useTheme } from '../../lib/theme';
 import React, { useEffect, useState, useCallback } from 'react'
 import { View, Text, FlatList, TouchableOpacity, StyleSheet,
   Image, ActivityIndicator, RefreshControl
@@ -8,7 +9,9 @@ import { Ionicons } from '@expo/vector-icons'
 import { createClient } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 
-export default function BookmarksScreen() {
+export default function () {
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => getStyles(colors), [colors]);
   const { user } = useAuth()
   const supabase = createClient()
   const [posts, setPosts] = useState<any[]>([])
@@ -129,25 +132,25 @@ export default function BookmarksScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+const getStyles = (colors: any) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   post: { paddingHorizontal: 16, paddingTop: 12 },
   postHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
   avatar: { width: 42, height: 42, borderRadius: 21 },
-  avatarFallback: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#e4e4e7', justifyContent: 'center', alignItems: 'center' },
-  avatarText: { fontSize: 18, fontWeight: '700', color: '#71717a' },
+  avatarFallback: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.border, justifyContent: 'center', alignItems: 'center' },
+  avatarText: { fontSize: 18, fontWeight: '700', color: colors.textDim },
   postHeaderText: { flex: 1 },
-  fullName: { fontSize: 15, fontWeight: '700', color: '#000' },
-  username: { fontSize: 13, color: '#71717a', marginTop: 1 },
-  postContent: { fontSize: 15, lineHeight: 22, color: '#111', marginBottom: 10 },
+  fullName: { fontSize: 15, fontWeight: '700', color: colors.text },
+  username: { fontSize: 13, color: colors.textDim, marginTop: 1 },
+  postContent: { fontSize: 15, lineHeight: 22, color: colors.text, marginBottom: 10 },
   postImage: { width: '100%', height: 260, borderRadius: 16, marginBottom: 10 },
   actions: { flexDirection: 'row', gap: 20, paddingBottom: 12 },
   actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  actionCount: { fontSize: 14, color: '#71717a', fontWeight: '600' },
-  divider: { height: 1, backgroundColor: '#f4f4f5', marginHorizontal: -16 },
+  actionCount: { fontSize: 14, color: colors.textDim, fontWeight: '600' },
+  divider: { height: 1, backgroundColor: colors.border, marginHorizontal: -16 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 100, gap: 12 },
-  emptyText: { fontSize: 16, color: '#a1a1aa' },
+  emptyText: { fontSize: 16, color: colors.textDim },
 })
 
 

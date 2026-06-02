@@ -1,4 +1,4 @@
-// app/(settings)/index.tsx
+import { useTheme } from '../../lib/theme';
 import React from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Image } from 'react-native'
 import { router } from 'expo-router'
@@ -6,8 +6,11 @@ import { Ionicons } from '@expo/vector-icons'
 import { useAuth } from '../../lib/auth'
 import { createClient } from '../../lib/supabase'
 import { useUI } from '../../lib/ui'
+import { Skeleton } from '../../components/Skeleton'
 
-export default function SettingsIndexScreen() {
+export default function SettingsScreen() {
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => getStyles(colors), [colors]);
   const { user, signOut } = useAuth()
   const { showActionSheet } = useUI()
   const supabase = createClient()
@@ -33,19 +36,17 @@ export default function SettingsIndexScreen() {
     ])
   }
 
-  const SettingsItem = ({ icon, title, color = '#71717a', onPress, danger }: { icon: any, title: string, color?: string, onPress?: () => void, danger?: boolean }) => (
+  const SettingsItem = ({ icon, title, onPress, danger }: { icon: any, title: string, onPress?: () => void, danger?: boolean }) => (
     <TouchableOpacity
       style={styles.item}
       onPress={onPress || (() => {})}
-      activeOpacity={0.7}
+      activeOpacity={0.6}
     >
       <View style={styles.itemLeft}>
-        <View style={[styles.iconWrap, { backgroundColor: danger ? '#fef2f2' : color }]}>
-          <Ionicons name={icon} size={18} color={danger ? '#ef4444' : '#fff'} />
-        </View>
+        <Ionicons name={icon} size={22} color={danger ? '#ef4444' : '#fff'} style={{ width: 28 }} />
         <Text style={[styles.itemTitle, danger && { color: '#ef4444' }]}>{title}</Text>
       </View>
-      <Ionicons name="chevron-forward" size={18} color="#d4d4d8" />
+      <Ionicons name="chevron-forward" size={18} color="#444" />
     </TouchableOpacity>
   )
 
@@ -53,7 +54,7 @@ export default function SettingsIndexScreen() {
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false} contentContainerStyle={styles.list}>
 
       {/* Profile Header */}
-      {profile && (
+      {profile ? (
         <TouchableOpacity style={styles.profileCard} onPress={() => router.push('/(settings)/edit-profile')} activeOpacity={0.8}>
           {profile.avatar_url ? (
             <Image source={{ uri: profile.avatar_url }} style={styles.profileAvatar} />
@@ -63,21 +64,31 @@ export default function SettingsIndexScreen() {
             </View>
           )}
           <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>{profile.full_name}</Text>
-            <Text style={styles.profileUsername}>@{profile.username}</Text>
+            <Text style={styles.profileName}>{profile.full_name || profile.username || 'User'}</Text>
           </View>
-          <Ionicons name="chevron-forward" size={20} color="#a1a1aa" />
+          <View style={styles.editBtn}>
+            <Text style={styles.editBtnText}>Edit</Text>
+          </View>
         </TouchableOpacity>
+      ) : (
+        <View style={styles.profileCard}>
+          <Skeleton width={64} height={64} borderRadius={32} />
+          <View style={[styles.profileInfo, { marginLeft: 16 }]}>
+            <Skeleton width={140} height={20} borderRadius={6} />
+          </View>
+          <Skeleton width={60} height={34} borderRadius={20} />
+        </View>
       )}
 
       {/* Account */}
       <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Account</Text>
         <View style={styles.sectionCard}>
-          <SettingsItem color="#3b82f6" icon="person" title="Edit Profile" onPress={() => router.push('/(settings)/edit-profile')} />
-          <SettingsItem color="#6366f1" icon="lock-closed" title="Privacy Policy" onPress={() => router.push('/(settings)/privacy')} />
-          <SettingsItem color="#ec4899" icon="document-text" title="Terms of Service" onPress={() => router.push('/(settings)/terms')} />
-          <SettingsItem color="#8b5cf6" icon="bookmark" title="Saved" onPress={() => router.push('/(settings)/bookmarks')} />
-          <SettingsItem color="#14b8a6" icon="shield-checkmark" title="Security" onPress={() => router.push('/(settings)/security')} />
+          <SettingsItem icon="person-outline" title="Edit Profile" onPress={() => router.push('/(settings)/edit-profile')} />
+          <SettingsItem icon="lock-closed-outline" title="Privacy Policy" onPress={() => router.push('/(settings)/privacy')} />
+          <SettingsItem icon="document-text-outline" title="Terms of Service" onPress={() => router.push('/(settings)/terms')} />
+          <SettingsItem icon="bookmark-outline" title="Saved Posts" onPress={() => router.push('/(settings)/bookmarks')} />
+          <SettingsItem icon="shield-checkmark-outline" title="Security" onPress={() => router.push('/(settings)/security')} />
         </View>
       </View>
 
@@ -85,8 +96,8 @@ export default function SettingsIndexScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Marketplace</Text>
         <View style={styles.sectionCard}>
-          <SettingsItem color="#f59e0b" icon="bag-check" title="Purchases" onPress={() => router.push('/(settings)/purchases')} />
-          <SettingsItem color="#eab308" icon="storefront" title="Store Dashboard" onPress={() => router.push('/(settings)/store-dashboard')} />
+          <SettingsItem icon="bag-check-outline" title="Purchases" onPress={() => router.push('/(settings)/purchases')} />
+          <SettingsItem icon="storefront-outline" title="Store Dashboard" onPress={() => router.push('/(settings)/store-dashboard')} />
         </View>
       </View>
 
@@ -94,18 +105,18 @@ export default function SettingsIndexScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Creator</Text>
         <View style={styles.sectionCard}>
-          <SettingsItem color="#10b981" icon="cash" title="Monetization" onPress={() => router.push('/(settings)/monetization')} />
-          <SettingsItem color="#0ea5e9" icon="megaphone" title="Ads Management" onPress={() => router.push('/(settings)/ads')} />
+          <SettingsItem icon="cash-outline" title="Monetization" onPress={() => router.push('/(settings)/monetization')} />
+          <SettingsItem icon="megaphone-outline" title="Ads Management" onPress={() => router.push('/(settings)/ads')} />
         </View>
       </View>
 
-      {/* Admin (only visible for admins) */}
+      {/* Admin */}
       {isAdmin && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Admin & Moderation</Text>
+          <Text style={styles.sectionTitle}>Admin</Text>
           <View style={styles.sectionCard}>
-            <SettingsItem color="#ef4444" icon="shield" title="Admin Dashboard" onPress={() => router.push('/(settings)/admin')} />
-            <SettingsItem color="#f97316" icon="briefcase" title="Marketplace Shops" onPress={() => router.push('/(settings)/marketplace-admin')} />
+            <SettingsItem icon="shield-outline" title="Admin Dashboard" onPress={() => router.push('/(settings)/admin')} />
+            <SettingsItem icon="briefcase-outline" title="Marketplace Shops" onPress={() => router.push('/(settings)/marketplace-admin')} />
           </View>
         </View>
       )}
@@ -114,7 +125,7 @@ export default function SettingsIndexScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Preferences</Text>
         <View style={styles.sectionCard}>
-          <SettingsItem color="#a855f7" icon="sunny" title="Appearance" onPress={() => router.push('/(settings)/appearance')} />
+          <SettingsItem icon="sunny-outline" title="Appearance" onPress={() => router.push('/(settings)/appearance')} />
         </View>
       </View>
 
@@ -122,22 +133,15 @@ export default function SettingsIndexScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Support</Text>
         <View style={styles.sectionCard}>
-          <SettingsItem color="#3b82f6" icon="help-circle" title="Help & Support" onPress={() => router.push('/(settings)/help')} />
-          <SettingsItem color="#6b7280" icon="information-circle" title="About App" onPress={() => router.push('/(settings)/about')} />
+          <SettingsItem icon="help-circle-outline" title="Help & Support" onPress={() => router.push('/(settings)/help')} />
+          <SettingsItem icon="information-circle-outline" title="About App" onPress={() => router.push('/(settings)/about')} />
         </View>
       </View>
 
       {/* Logout */}
       <View style={styles.section}>
-        <View style={styles.sectionCard}>
-          <TouchableOpacity style={styles.item} onPress={handleSignOut} activeOpacity={0.6}>
-            <View style={styles.itemLeft}>
-              <View style={[styles.iconWrap, styles.iconWrapDanger]}>
-                <Ionicons name="log-out-outline" size={18} color="#ef4444" />
-              </View>
-              <Text style={[styles.itemTitle, { color: '#ef4444' }]}>Log out</Text>
-            </View>
-          </TouchableOpacity>
+        <View style={[styles.sectionCard, { marginTop: 12 }]}>
+          <SettingsItem icon="log-out-outline" title="Log out" onPress={handleSignOut} danger />
         </View>
       </View>
 
@@ -145,92 +149,82 @@ export default function SettingsIndexScreen() {
   )
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f4f4f5',
+    backgroundColor: '#000', // Pitch black to match our theme
   },
   list: {
-    paddingVertical: 16,
+    paddingVertical: 20,
+    paddingHorizontal: 20,
+    paddingBottom: 80,
+  },
+  profileCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#000',
+    padding: 8,
+    marginBottom: 32,
+  },
+  profileAvatar: {
+    width: 64, height: 64, borderRadius: 32, marginRight: 16,
+  },
+  avatarFallback: {
+    backgroundColor: '#111', justifyContent: 'center', alignItems: 'center',
+  },
+  avatarText: {
+    fontSize: 24, fontWeight: '700', color: '#fff'
+  },
+  profileInfo: {
+    flex: 1,
+  },
+  profileName: {
+    fontSize: 20, fontWeight: '800', color: '#fff', marginBottom: 4,
+  },
+  profileUsername: {
+    fontSize: 15, color: '#888', fontWeight: '500'
+  },
+  editBtn: {
+    backgroundColor: '#222',
     paddingHorizontal: 16,
-    paddingBottom: 60,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  editBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
   },
   section: {
-    marginBottom: 20,
+    marginBottom: 28,
   },
   sectionTitle: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#71717a',
+    fontWeight: '800',
+    color: '#fff',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 1.2,
     marginBottom: 8,
-    paddingHorizontal: 16,
+    paddingHorizontal: 8,
   },
   sectionCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    marginHorizontal: 16,
+    backgroundColor: '#000',
     overflow: 'hidden',
   },
   item: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#f4f4f5',
+    paddingVertical: 16,
+    paddingHorizontal: 8,
   },
   itemLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-  },
-  iconWrap: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  iconWrapDanger: {
-    backgroundColor: '#fef2f2',
   },
   itemTitle: {
     fontSize: 16,
-    color: '#18181b',
+    color: '#fff',
     fontWeight: '500',
-  },
-  profileCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    marginHorizontal: 16,
-    marginBottom: 24,
-    shadowColor: '#000',
-    shadowOpacity: 0.03,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  profileAvatar: {
-    width: 60, height: 60, borderRadius: 30, marginRight: 16,
-  },
-  avatarFallback: {
-    backgroundColor: '#e4e4e7', justifyContent: 'center', alignItems: 'center',
-  },
-  avatarText: {
-    fontSize: 24, fontWeight: '700', color: '#71717a'
-  },
-  profileInfo: {
-    flex: 1,
-  },
-  profileName: {
-    fontSize: 20, fontWeight: '700', color: '#18181b', marginBottom: 4,
-  },
-  profileUsername: {
-    fontSize: 14, color: '#71717a',
   },
 })

@@ -1,8 +1,9 @@
 // app/(tabs)/profile.tsx
+import { useTheme } from '../../lib/theme';
 import React, { useEffect, useState } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  Image, ScrollView, ActivityIndicator
+  Image, ScrollView, ActivityIndicator, Linking
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, useFocusEffect } from 'expo-router'
@@ -12,7 +13,9 @@ import { useAuth } from '../../lib/auth'
 import { PostItem, PostType } from '../../components/PostItem'
 import { Skeleton } from '../../components/Skeleton'
 
-export default function ProfileScreen() {
+export default function () {
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => getStyles(colors), [colors]);
   const { user } = useAuth()
   const supabase = createClient()
   const [profile, setProfile] = useState<any>(null)
@@ -25,7 +28,10 @@ export default function ProfileScreen() {
 
   useFocusEffect(
     React.useCallback(() => {
-      if (!user) return
+      if (!user) {
+        setLoading(false)
+        return
+      }
       let isActive = true
 
       const fetch = async () => {
@@ -44,7 +50,7 @@ export default function ProfileScreen() {
             { data: bookmarksRes, error: bookErr }
           ] = await Promise.all([
             supabase.from('profiles').select('*').eq('id', user.id).single(),
-            supabase.from('posts').select(postSel).eq('creator_id', user.id).order('created_at', { ascending: false }).limit(20),
+            supabase.from('posts').select(postSel).eq('creator_id', user.id).or('is_ghost.is.null,is_ghost.eq.false').order('created_at', { ascending: false }).limit(20),
             supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', user.id),
             supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', user.id),
             supabase.from('posts').select('view_count').eq('creator_id', user.id).gte('created_at', startDate),
@@ -227,13 +233,15 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
         {/* Header row */}
         <View style={styles.headerRow}>
-          <Text style={styles.username}>@{profile?.username}</Text>
           <View style={styles.headerActions}>
+            <TouchableOpacity onPress={() => router.push('/wallet')} style={[styles.iconBtn, { marginRight: 8 }]}>
+              <Ionicons name="wallet-outline" size={24} color={colors.text} />
+            </TouchableOpacity>
             <TouchableOpacity onPress={() => router.push('/(settings)')} style={styles.iconBtn}>
-              <Ionicons name="menu-outline" size={28} color="#000" />
+              <Ionicons name="menu-outline" size={28} color={colors.text} />
             </TouchableOpacity>
           </View>
         </View>
@@ -266,19 +274,41 @@ export default function ProfileScreen() {
 
         {/* Insights Link */}
         {monthlyViews !== null && monthlyViews > 0 && (
-          <TouchableOpacity style={styles.insightsLink} activeOpacity={0.7} onPress={() => router.push('/insights')}>
+          <TouchableOpacity 
+            style={styles.insightsLink} 
+            onPress={() => router.push('/analytics')}
+            activeOpacity={0.7}
+          >
             <Text style={styles.insightsText}>{monthlyViews} views in the last 30 days</Text>
             <Ionicons name="chevron-forward" size={14} color="#71717a" />
           </TouchableOpacity>
         )}
 
-        {/* Followers & Website */}
+        {/* Followers & Following & Website */}
         <View style={styles.followersRow}>
-          <Text style={styles.followersText}>{followersCount} followers</Text>
+          <TouchableOpacity 
+            onPress={() => router.push(`/connections?userId=${user.id}&initialTab=followers`)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.followersText}>{followersCount} followers</Text>
+          </TouchableOpacity>
+          <Text style={styles.dot}>•</Text>
+          <TouchableOpacity 
+            onPress={() => router.push(`/connections?userId=${user.id}&initialTab=following`)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.followersText}>{followingCount} following</Text>
+          </TouchableOpacity>
           {profile?.website_url ? (
             <>
               <Text style={styles.dot}>•</Text>
-              <Text style={styles.websiteText}>{profile.website_url.replace(/^https?:\/\//, '')}</Text>
+              <TouchableOpacity onPress={() => {
+                let url = profile.website_url;
+                if (!url.startsWith('http')) url = 'https://' + url;
+                Linking.openURL(url).catch(() => {});
+              }}>
+                <Text style={styles.websiteText}>{profile.website_url.replace(/^https?:\/\//, '')}</Text>
+              </TouchableOpacity>
             </>
           ) : null}
         </View>
@@ -297,13 +327,31 @@ export default function ProfileScreen() {
         {(profile?.instagram_url || profile?.tiktok_url || profile?.facebook_url) ? (
           <View style={styles.socialRow}>
             {profile?.instagram_url ? (
-              <Ionicons name="logo-instagram" size={22} color="#a1a1aa" />
+              <TouchableOpacity onPress={() => {
+                let url = profile.instagram_url;
+                if (!url.startsWith('http')) url = 'https://' + url;
+                Linking.openURL(url).catch(() => {});
+              }}>
+                <Ionicons name="logo-instagram" size={22} color="#a1a1aa" />
+              </TouchableOpacity>
             ) : null}
             {profile?.tiktok_url ? (
-              <Ionicons name="logo-tiktok" size={22} color="#a1a1aa" />
+              <TouchableOpacity onPress={() => {
+                let url = profile.tiktok_url;
+                if (!url.startsWith('http')) url = 'https://' + url;
+                Linking.openURL(url).catch(() => {});
+              }}>
+                <Ionicons name="logo-tiktok" size={22} color="#a1a1aa" />
+              </TouchableOpacity>
             ) : null}
             {profile?.facebook_url ? (
-              <Ionicons name="logo-facebook" size={22} color="#a1a1aa" />
+              <TouchableOpacity onPress={() => {
+                let url = profile.facebook_url;
+                if (!url.startsWith('http')) url = 'https://' + url;
+                Linking.openURL(url).catch(() => {});
+              }}>
+                <Ionicons name="logo-facebook" size={22} color="#a1a1aa" />
+              </TouchableOpacity>
             ) : null}
           </View>
         ) : null}
@@ -342,7 +390,7 @@ export default function ProfileScreen() {
             if (displayPosts.length === 0) {
               return (
                 <View style={{ padding: 40, alignItems: 'center' }}>
-                  <Text style={{ color: '#a1a1aa' }}>No {activeTab === 'posts' ? 'threads' : activeTab} found.</Text>
+                  <Text style={{ color: colors.textDim }}>No {activeTab === 'posts' ? 'threads' : activeTab} found.</Text>
                 </View>
               )
             }
@@ -356,14 +404,14 @@ export default function ProfileScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' },
+const getStyles = (colors: any) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
   headerRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center',
     paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4,
   },
-  navTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '800', color: '#000' },
+  navTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '800', color: colors.text },
   headerActions: { flexDirection: 'row', gap: 16, alignItems: 'center' },
   iconBtn: { padding: 4 },
   infoArea: {
@@ -372,51 +420,51 @@ const styles = StyleSheet.create({
   },
   infoLeft: { flex: 1, paddingRight: 16 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
-  fullName: { fontSize: 24, fontWeight: '800', color: '#000', letterSpacing: -0.5 },
-  username: { fontSize: 15, fontWeight: '500', color: '#000', marginBottom: 8 },
-  bio: { fontSize: 14, color: '#000', lineHeight: 20, fontWeight: '500' },
+  fullName: { fontSize: 24, fontWeight: '800', color: colors.text, letterSpacing: -0.5 },
+  username: { fontSize: 15, fontWeight: '500', color: colors.text, marginBottom: 8 },
+  bio: { fontSize: 14, color: colors.text, lineHeight: 20, fontWeight: '500' },
   
   avatarWrap: { position: 'relative' },
-  avatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#f4f4f5' },
+  avatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: colors.border },
   avatarFallback: { justifyContent: 'center', alignItems: 'center' },
-  avatarInitial: { fontSize: 32, fontWeight: '700', color: '#71717a' },
+  avatarInitial: { fontSize: 32, fontWeight: '700', color: colors.textDim },
 
   insightsLink: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 16, marginBottom: 16,
   },
-  insightsText: { fontSize: 14, color: '#71717a', fontWeight: '600' },
+  insightsText: { fontSize: 14, color: colors.textDim, fontWeight: '600' },
 
   followersRow: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: 16, marginBottom: 20,
   },
-  followersText: { fontSize: 14, color: '#71717a', fontWeight: '600' },
+  followersText: { fontSize: 14, color: colors.textDim, fontWeight: '600' },
   dot: { color: '#d4d4d8' },
-  websiteText: { fontSize: 14, color: '#71717a', fontWeight: '600' },
+  websiteText: { fontSize: 14, color: colors.textDim, fontWeight: '600' },
 
   ctaRow: {
     flexDirection: 'row', gap: 10,
     paddingHorizontal: 16, paddingBottom: 16,
   },
   btnOutline: {
-    flex: 1, backgroundColor: '#fff', borderRadius: 10,
+    flex: 1, backgroundColor: colors.background, borderRadius: 10,
     height: 36, justifyContent: 'center', alignItems: 'center',
-    borderWidth: 1, borderColor: '#e4e4e7',
+    borderWidth: 1, borderColor: colors.border,
   },
   btnOutlineShare: {
-    flex: 1, backgroundColor: '#fff', borderRadius: 10,
+    flex: 1, backgroundColor: colors.background, borderRadius: 10,
     height: 36, justifyContent: 'center', alignItems: 'center',
-    borderWidth: 1, borderColor: '#e4e4e7',
+    borderWidth: 1, borderColor: colors.border,
   },
-  btnOutlineText: { fontSize: 14, fontWeight: '700', color: '#000' },
+  btnOutlineText: { fontSize: 14, fontWeight: '700', color: colors.text },
 
   socialRow: { flexDirection: 'row', gap: 16, paddingHorizontal: 16, paddingBottom: 16, alignItems: 'center' },
 
-  tabsScroll: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#f4f4f5' },
+  tabsScroll: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border },
   tabBtn: { paddingHorizontal: 16, paddingVertical: 12 },
-  tabBtnActive: { borderBottomWidth: 2, borderBottomColor: '#000' },
-  tabBtnText: { fontSize: 14, fontWeight: '600', color: '#a1a1aa' },
-  tabBtnTextActive: { color: '#000' },
+  tabBtnActive: { borderBottomWidth: 2, borderBottomColor: colors.text },
+  tabBtnText: { fontSize: 14, fontWeight: '600', color: colors.textDim },
+  tabBtnTextActive: { color: colors.text },
   feed: { paddingBottom: 40 },
 })

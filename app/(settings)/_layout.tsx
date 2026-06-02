@@ -1,3 +1,4 @@
+import { useTheme } from '../../lib/theme';
 // app/(settings)/_layout.tsx
 import { Stack, router } from 'expo-router'
 import { Pressable, Platform, View, Text } from 'react-native'
@@ -5,11 +6,12 @@ import { Ionicons } from '@expo/vector-icons'
 import { BackButton } from '../../components/BackButton'
 
 export default function SettingsLayout() {
+  const { colors } = useTheme();
   return (
     <Stack screenOptions={{
       headerShadowVisible: false,
-      headerStyle: { backgroundColor: '#fff' },
-      headerTintColor: '#000',
+      headerStyle: { backgroundColor: colors.background },
+      headerTintColor: colors.text,
       headerTitleStyle: { fontWeight: '700' },
       headerLeft: ({ canGoBack }) => canGoBack ? (
         <View style={{ paddingLeft: 16, paddingRight: 16 }}>
@@ -17,7 +19,19 @@ export default function SettingsLayout() {
         </View>
       ) : null,
     }}>
-      <Stack.Screen name="index" options={{ title: 'Settings' }} />
+      <Stack.Screen 
+        name="index" 
+        options={{ 
+          title: '',
+          headerLeft: () => (
+            <View style={{ paddingLeft: 16, paddingRight: 16 }}>
+              <Pressable onPress={() => router.navigate('/(tabs)/profile')} hitSlop={15}>
+                <Ionicons name="arrow-back" size={24} color={colors.text} />
+              </Pressable>
+            </View>
+          )
+        }} 
+      />
       <Stack.Screen name="edit-profile" options={{ title: 'Edit Profile' }} />
       <Stack.Screen name="admin" options={{ title: 'Admin Dashboard' }} />
       <Stack.Screen name="ads" options={{ title: 'Ads Management' }} />

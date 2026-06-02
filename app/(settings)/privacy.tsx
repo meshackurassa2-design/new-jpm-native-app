@@ -1,4 +1,5 @@
 // app/(settings)/privacy.tsx
+import { useTheme } from '../../lib/theme';
 import React from 'react'
 import { ScrollView, View, Text, StyleSheet } from 'react-native'
 
@@ -14,7 +15,9 @@ const SECTIONS = [
       'Account Information: Name, email address, password, profile picture, and demographic information.',
       'Marketplace Data: If you buy or sell items, we collect transaction history, shipping addresses, phone numbers, and shop details. We do not store raw credit card numbers; payment processing is securely handled by third-party providers (e.g., AzamPay).',
       'Content & Communications: Messages sent through our chat, posts, reviews, and feedback.',
+      'AI Image Generation: Text prompts you submit to generate AI images are processed temporarily to provide the service. We do not use your generated images or prompts for our own training models.',
       'Device & Usage Data: Device identifiers (including Push Notification tokens via Firebase), IP address, operating system, and app interaction data.',
+      'Ad-Reward Activity: We track ad-watching milestones (such as timestamps and counts) to accurately issue digital coin rewards to your wallet.',
       'Location Data: General location data (e.g., city/area) to help you find local shops and products.',
     ],
   },
@@ -22,8 +25,8 @@ const SECTIONS = [
     title: '3. How We Use Information',
     body: 'We use the information we collect to:',
     bullets: [
-      'Provide, operate, and maintain our social and marketplace features.',
-      'Process transactions and facilitate communication between buyers and sellers.',
+      'Provide, operate, and maintain our social, AI generation, and marketplace features.',
+      'Process transactions, ad rewards, and facilitate communication between buyers and sellers.',
       'Send you administrative messages, push notifications, and security alerts.',
       'Personalize your experience and recommend relevant content and products.',
       'Detect, prevent, and address fraud, terms violations, or security issues.',
@@ -61,7 +64,9 @@ const SECTIONS = [
   },
 ]
 
-export default function PrivacyScreen() {
+export default function () {
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => getStyles(colors), [colors]);
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.date}>Last updated: March 26, 2026</Text>
@@ -97,20 +102,20 @@ export default function PrivacyScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+const getStyles = (colors: any) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 20, paddingBottom: 60 },
-  date: { fontSize: 13, color: '#71717a', fontWeight: '500', marginBottom: 28 },
+  date: { fontSize: 13, color: colors.textDim, fontWeight: '500', marginBottom: 28 },
   section: { marginBottom: 28 },
-  sectionTitle: { fontSize: 17, fontWeight: '800', color: '#000', marginBottom: 10, lineHeight: 24 },
+  sectionTitle: { fontSize: 17, fontWeight: '800', color: colors.text, marginBottom: 10, lineHeight: 24 },
   body: { fontSize: 15, color: '#3f3f46', lineHeight: 24 },
   bulletRow: { flexDirection: 'row', gap: 10, marginTop: 8 },
-  bulletDot: { fontSize: 18, color: '#71717a', lineHeight: 24, marginTop: -2 },
+  bulletDot: { fontSize: 18, color: colors.textDim, lineHeight: 24, marginTop: -2 },
   bulletText: { flex: 1, fontSize: 15, color: '#3f3f46', lineHeight: 24 },
-  subSection: { marginTop: 16, paddingTop: 16, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#e4e4e7' },
-  subSectionTitle: { fontSize: 15, fontWeight: '700', color: '#000', marginBottom: 8 },
-  contactBox: { marginTop: 8, backgroundColor: '#f4f4f5', borderRadius: 10, padding: 14 },
+  subSection: { marginTop: 16, paddingTop: 16, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  subSectionTitle: { fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 8 },
+  contactBox: { marginTop: 8, backgroundColor: colors.border, borderRadius: 10, padding: 14 },
   contactEmail: { fontSize: 15, fontWeight: '700', color: '#2563eb' },
-  footer: { marginTop: 20, paddingTop: 20, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#e4e4e7', alignItems: 'center' },
-  footerText: { fontSize: 13, color: '#a1a1aa' },
+  footer: { marginTop: 20, paddingTop: 20, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, alignItems: 'center' },
+  footerText: { fontSize: 13, color: colors.textDim },
 })

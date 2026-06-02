@@ -11,9 +11,11 @@ import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
 import { createClient } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import { useTheme } from '../lib/theme';
 import { decode } from 'base64-arraybuffer'
 import { GiphyPicker } from '../components/GiphyPicker'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import * as StoreReview from 'expo-store-review'
 
 interface PostItem {
   id: string
@@ -28,7 +30,7 @@ const CATEGORIES = ['Funny', 'Trending', 'Relatable', 'Dank', 'Wholesome', 'Meme
 // ─── Stable avatar component ─────────────────────────────────────────────────
 // Defined outside the screen so React never re-mounts it on parent re-render.
 // React.memo means it only re-renders when `uri` or `ghost` actually changes.
-const AvatarImage = React.memo(({ uri, ghost }: { uri: string | null; ghost: boolean }) => {
+const AvatarImage = React.memo(({ uri, ghost, styles }: { uri: string | null; ghost: boolean; styles: any }) => {
   const [loaded, setLoaded] = React.useState(false)
   const [errored, setErrored] = React.useState(false)
 
@@ -71,7 +73,7 @@ const AvatarImage = React.memo(({ uri, ghost }: { uri: string | null; ghost: boo
 
 // ─── Stable media image component ────────────────────────────────────────────
 // Same reason: prevents media thumbnails from reloading on every keystroke.
-const MediaImage = React.memo(({ uri }: { uri: string }) => {
+const MediaImage = React.memo(({ uri, styles }: { uri: string; styles: any }) => {
   // useMemo ensures the source object reference is stable
   const source = useMemo(() => ({ uri }), [uri])
   return <Image source={source} style={styles.mediaImage} />
@@ -80,6 +82,8 @@ const MediaImage = React.memo(({ uri }: { uri: string }) => {
 // ─── Main screen ─────────────────────────────────────────────────────────────
 export default function CreatePostScreen() {
   const { user } = useAuth()
+  const { colors } = useTheme()
+  const styles = useMemo(() => getStyles(colors), [colors])
   const supabase = createClient()
 
   const [thread, setThread] = useState<PostItem[]>([{
@@ -155,7 +159,7 @@ export default function CreatePostScreen() {
         : ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       allowsMultipleSelection: false, // Must be false for allowsEditing to work
-      quality: 0.8,
+      quality: 0.4, // AGGRESSIVE COMPRESSION: Reduces image size by 80% to save Supabase Egress!
       base64: type === 'Images',
     })
     if (!result.canceled) {
@@ -240,6 +244,24 @@ export default function CreatePostScreen() {
         if (error) throw error
         previousPostId = result.id
       }
+
+      // Check if we should prompt for app review (e.g. after 3rd and 10th post)
+      try {
+        const countStr = await AsyncStorage.getItem('user_created_posts_count')
+        const currentCount = countStr ? parseInt(countStr, 10) : 0
+        const newCount = currentCount + 1
+        await AsyncStorage.setItem('user_created_posts_count', newCount.toString())
+
+        if (newCount === 3 || newCount === 10) {
+          const isAvailable = await StoreReview.isAvailableAsync()
+          if (isAvailable) {
+            await StoreReview.requestReview()
+          }
+        }
+      } catch (reviewErr) {
+        console.warn('Store review skipped:', reviewErr)
+      }
+
       router.back()
     } catch (e: any) {
       Alert.alert('Error', e.message)
@@ -261,19 +283,6 @@ export default function CreatePostScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
           <Text style={styles.headerBtnText}>Cancel</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>New Post</Text>
-        <TouchableOpacity
-          style={[styles.postBtn, isEmpty && styles.postBtnDisabled]}
-          onPress={handlePost}
-          disabled={loading || isEmpty}
-          activeOpacity={0.75}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          {loading
-            ? <ActivityIndicator size="small" color="#fff" />
-            : <Text style={[styles.postBtnText, isEmpty && styles.postBtnTextDisabled]}>Post</Text>
-          }
-        </TouchableOpacity>
       </View>
 
       {/* ── KAV only wraps the scrollable content area ── */}
@@ -292,13 +301,21 @@ export default function CreatePostScreen() {
             <View key={post.id} style={styles.postItem}>
               {/* Left column: avatar + thread line */}
               <View style={styles.postLeft}>
-                <AvatarImage uri={profileAvatar} ghost={isGhost} />
-                {index < thread.length - 1 && <View style={styles.threadLine} />}
+                <AvatarImage uri={profileAvatar} ghost={isGhost} styles={styles} />
+                <View style={styles.threadLine} />
+                {index === thread.length - 1 && (
+                  <View style={styles.addThreadCircle}>
+                    <Ionicons name="add" size={14} color={colors.textDim} />
+                  </View>
+                )}
               </View>
 
               {/* Right column: input + media + toolbar */}
               <View style={styles.postRight}>
-                {/* Category chips — only on first post */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                  <Text style={styles.fullName}>{user?.user_metadata?.username || 'user'}</Text>
+                  <Text style={styles.privacyText}> › {replyPrivacy}</Text>
+                </View>
                 {index === 0 && (
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesScroll}>
                     {CATEGORIES.map(cat => (
@@ -330,7 +347,7 @@ export default function CreatePostScreen() {
                   <View style={styles.mediaRow}>
                     {[...post.remoteUrls, ...post.images.map(i => i.uri)].map((uri, i) => (
                       <View key={`${uri}-${i}`} style={styles.mediaItem}>
-                        <MediaImage uri={uri} />
+                        <MediaImage uri={uri} styles={styles} />
                         <TouchableOpacity
                           style={styles.removeBtn}
                           onPress={() => {
@@ -367,30 +384,34 @@ export default function CreatePostScreen() {
                 {/* Toolbar */}
                 <View style={styles.toolbar}>
                   <TouchableOpacity style={styles.toolBtn} onPress={() => pickMedia(index, 'Images')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <Ionicons name="image-outline" size={22} color="#2563eb" />
+                    <Ionicons name="image-outline" size={22} color={colors.textDim} />
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.toolBtn} onPress={() => pickMedia(index, 'Videos')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <Ionicons name="videocam-outline" size={22} color="#2563eb" />
+                    <Ionicons name="videocam-outline" size={22} color={colors.textDim} />
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.toolBtn} onPress={() => setShowGiphy({ postIndex: index })} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <Ionicons name="logo-youtube" size={22} color="#2563eb" />
+                    <View style={styles.gifIcon}><Text style={styles.gifText}>GIF</Text></View>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.toolBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name="list-outline" size={22} color={colors.textDim} />
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.toolBtn} onPress={() => setShowOptions(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <Ionicons name="options-outline" size={22} color="#2563eb" />
+                    <Ionicons name="ellipsis-horizontal" size={22} color={colors.textDim} />
                   </TouchableOpacity>
-                  {index === thread.length - 1 && (
-                    <TouchableOpacity
-                      style={styles.toolBtn}
-                      onPress={() => setThread(prev => [
-                        ...prev,
-                        { id: Date.now().toString(), content: '', images: [], remoteUrls: [], video: null },
-                      ])}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Ionicons name="add-circle-outline" size={22} color="#2563eb" />
-                    </TouchableOpacity>
-                  )}
                 </View>
+
+                {index === thread.length - 1 && (
+                  <TouchableOpacity
+                    style={styles.addThreadBtn}
+                    onPress={() => setThread(prev => [
+                      ...prev,
+                      { id: Date.now().toString(), content: '', images: [], remoteUrls: [], video: null },
+                    ])}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Text style={styles.addThreadText}>Add to thread</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
           ))}
@@ -417,6 +438,23 @@ export default function CreatePostScreen() {
           onGifSelect={handleGifSelect}
         />
       </KeyboardAvoidingView>
+
+      {/* Floating Bottom Action Bar */}
+      <View style={styles.bottomBarWrapper}>
+        <View style={styles.bottomBar}>
+          <TouchableOpacity style={styles.bottomOptionsBtn} onPress={() => setShowOptions(true)}>
+            <Text style={styles.bottomOptionsText}>Options</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.bottomPostBtn, isEmpty && styles.bottomPostBtnDisabled]} 
+            onPress={handlePost}
+            disabled={loading || isEmpty}
+          >
+            {loading ? <ActivityIndicator size="small" color={colors.background} /> : <Text style={styles.bottomPostText}>Post</Text>}
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.bottomHint}>Drafts auto-save to local history</Text>
+      </View>
 
       {/* Post settings modal */}
       <Modal visible={showOptions} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowOptions(false)}>
@@ -462,8 +500,8 @@ export default function CreatePostScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#fff' },
+const getStyles = (colors: any) => StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.background },
 
   header: {
     flexDirection: 'row',
@@ -472,14 +510,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e4e4e7',
-    backgroundColor: '#fff',
+    borderBottomColor: colors.border,
+    backgroundColor: colors.background,
   },
-  headerTitle: { fontSize: 17, fontWeight: '700', color: '#18181b' },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: colors.text },
   headerBtn: { padding: 4 },
-  headerBtnText: { fontSize: 17, color: '#18181b', fontWeight: '400' },
+  headerBtnText: { fontSize: 17, color: colors.text, fontWeight: '400' },
   postBtn: {
-    backgroundColor: '#18181b',
+    backgroundColor: colors.text,
     paddingHorizontal: 18,
     paddingVertical: 8,
     borderRadius: 20,
@@ -487,9 +525,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  postBtnDisabled: { backgroundColor: '#e4e4e7' },
-  postBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  postBtnTextDisabled: { color: '#a1a1aa' },
+  postBtnDisabled: { backgroundColor: colors.border },
+  postBtnText: { color: colors.background, fontWeight: '700', fontSize: 15 },
+  postBtnTextDisabled: { color: colors.textDim },
 
   scroll: { flex: 1 },
 
@@ -497,7 +535,7 @@ const styles = StyleSheet.create({
   postLeft: { alignItems: 'center', width: 48, marginRight: 12 },
   avatarBase: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#6366f1', overflow: 'hidden' },
   avatarGhost: { borderWidth: 2, borderColor: '#f59e0b' },
-  threadLine: { width: 2, flex: 1, backgroundColor: '#e4e4e7', marginVertical: 8, borderRadius: 1 },
+  threadLine: { width: 2, flex: 1, backgroundColor: colors.border, marginVertical: 8, borderRadius: 1 },
   postRight: { flex: 1, paddingBottom: 16 },
 
   categoriesScroll: { marginBottom: 12 },
@@ -506,27 +544,41 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#e4e4e7',
+    borderColor: colors.border,
     marginRight: 8,
-    backgroundColor: '#f4f4f5',
+    backgroundColor: colors.border,
   },
-  categoryBtnActive: { backgroundColor: '#18181b', borderColor: '#18181b' },
-  categoryBtnText: { fontSize: 12, fontWeight: '700', color: '#71717a' },
-  categoryBtnTextActive: { color: '#fff' },
+  categoryBtnActive: { backgroundColor: colors.text, borderColor: '#18181b' },
+  categoryBtnText: { fontSize: 12, fontWeight: '700', color: colors.textDim },
+  categoryBtnTextActive: { color: colors.background },
 
   input: {
     fontSize: 17,
-    color: '#18181b',
+    color: colors.text,
     lineHeight: 24,
     minHeight: 60,
     paddingBottom: 8,
   },
+  privacyText: { fontSize: 14, color: colors.textDim, fontWeight: '700' },
+  gifIcon: { borderWidth: 1, borderColor: colors.textDim, borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1 },
+  gifText: { fontSize: 10, color: colors.textDim, fontWeight: '700' },
+  addThreadBtn: { marginTop: 12, paddingVertical: 8 },
+  addThreadText: { color: colors.textDim, fontWeight: '600', fontSize: 15 },
+  addThreadCircle: { width: 24, height: 24, borderRadius: 12, borderWidth: 1, borderColor: colors.border, justifyContent: 'center', alignItems: 'center', marginTop: 4 },
+  bottomBarWrapper: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingBottom: 32, paddingHorizontal: 16, backgroundColor: colors.background },
+  bottomBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  bottomOptionsBtn: { borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10 },
+  bottomOptionsText: { color: colors.text, fontWeight: '600', fontSize: 14 },
+  bottomPostBtn: { backgroundColor: colors.text, borderRadius: 24, paddingHorizontal: 24, paddingVertical: 12 },
+  bottomPostBtnDisabled: { backgroundColor: colors.border },
+  bottomPostText: { color: colors.background, fontWeight: '700', fontSize: 15 },
+  bottomHint: { color: colors.textDim, fontSize: 12, fontWeight: '600', marginTop: 12, textAlign: 'center' },
 
   mediaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
-  mediaItem: { position: 'relative', width: 120, height: 160, borderRadius: 12, overflow: 'hidden', backgroundColor: '#f4f4f5' },
+  mediaItem: { position: 'relative', width: 120, height: 160, borderRadius: 12, overflow: 'hidden', backgroundColor: colors.border },
   mediaImage: { width: '100%', height: '100%' },
   videoPlaceholder: { width: '100%', height: '100%', backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
-  removeBtn: { position: 'absolute', top: 4, right: 4, backgroundColor: '#fff', borderRadius: 12 },
+  removeBtn: { position: 'absolute', top: 4, right: 4, backgroundColor: colors.background, borderRadius: 12 },
 
   toolbar: { flexDirection: 'row', gap: 16, marginTop: 12 },
   toolBtn: { padding: 4 },
@@ -547,14 +599,14 @@ const styles = StyleSheet.create({
   dealTitleActive: { color: '#14532d' },
   dealDesc: { fontSize: 12, color: '#166534', marginTop: 2 },
 
-  modalContainer: { flex: 1, backgroundColor: '#fff' },
+  modalContainer: { flex: 1, backgroundColor: colors.background },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e4e4e7',
+    borderBottomColor: colors.border,
   },
   modalTitle: { fontSize: 18, fontWeight: '800' },
   modalClose: { padding: 4 },
@@ -563,7 +615,7 @@ const styles = StyleSheet.create({
   settingHeader: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#a1a1aa',
+    color: colors.textDim,
     marginBottom: 12,
     letterSpacing: 1,
   },
@@ -573,29 +625,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#f4f4f5',
+    borderBottomColor: colors.border,
   },
-  radioLabel: { fontSize: 16, fontWeight: '600', color: '#71717a' },
-  radioLabelActive: { color: '#000' },
+  radioLabel: { fontSize: 16, fontWeight: '600', color: colors.textDim },
+  radioLabelActive: { color: colors.text },
   radioOuter: {
     width: 24,
     height: 24,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: '#e4e4e7',
+    borderColor: colors.border,
     justifyContent: 'center',
     alignItems: 'center',
   },
   radioOuterActive: { borderColor: '#000', backgroundColor: '#000' },
-  radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#fff' },
+  radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.background },
   settingRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#f4f4f5',
+    borderBottomColor: colors.border,
   },
-  settingLabel: { fontSize: 16, fontWeight: '700', color: '#18181b' },
-  settingDesc: { fontSize: 13, color: '#71717a', marginTop: 4 },
+  settingLabel: { fontSize: 16, fontWeight: '700', color: colors.text },
+  settingDesc: { fontSize: 13, color: colors.textDim, marginTop: 4 },
 })

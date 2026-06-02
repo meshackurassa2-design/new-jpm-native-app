@@ -1,4 +1,5 @@
 // app/(settings)/help.tsx
+import { useTheme } from '../../lib/theme';
 import React, { useState } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Linking, LayoutAnimation } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
@@ -27,7 +28,7 @@ const FAQ = [
   },
 ]
 
-function FAQItem({ q, a }: { q: string, a: string }) {
+function FAQItem({ q, a, styles }: { q: string, a: string, styles: any }) {
   const [open, setOpen] = useState(false)
 
   return (
@@ -48,7 +49,9 @@ function FAQItem({ q, a }: { q: string, a: string }) {
   )
 }
 
-export default function HelpScreen() {
+export default function () {
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => getStyles(colors), [colors]);
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Contact card */}
@@ -70,7 +73,7 @@ export default function HelpScreen() {
       <View style={styles.card}>
         {FAQ.map((item, i) => (
           <View key={i}>
-            <FAQItem q={item.q} a={item.a} />
+            <FAQItem q={item.q} a={item.a} styles={styles} />
             {i < FAQ.length - 1 && <View style={styles.divider} />}
           </View>
         ))}
@@ -97,23 +100,23 @@ export default function HelpScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f4f4f5' },
+const getStyles = (colors: any) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.border },
   content: { padding: 20, paddingBottom: 60 },
-  contactCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 14, backgroundColor: '#fff', borderRadius: 16, padding: 20, marginBottom: 24 },
+  contactCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 14, backgroundColor: colors.background, borderRadius: 16, padding: 20, marginBottom: 24 },
   contactIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#eff6ff', justifyContent: 'center', alignItems: 'center' },
-  contactTitle: { fontSize: 16, fontWeight: '700', color: '#000', marginBottom: 4 },
+  contactTitle: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 4 },
   contactLink: { fontSize: 14, color: '#2563eb', fontWeight: '600', marginBottom: 2 },
-  contactNote: { fontSize: 12, color: '#a1a1aa' },
-  sectionTitle: { fontSize: 13, fontWeight: '700', color: '#71717a', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 },
-  card: { backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden', marginBottom: 24 },
+  contactNote: { fontSize: 12, color: colors.textDim },
+  sectionTitle: { fontSize: 13, fontWeight: '700', color: colors.textDim, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 },
+  card: { backgroundColor: colors.background, borderRadius: 16, overflow: 'hidden', marginBottom: 24 },
   faqItem: { padding: 16 },
   faqHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
-  faqQ: { fontSize: 15, fontWeight: '600', color: '#000', flex: 1 },
-  faqA: { fontSize: 14, color: '#71717a', marginTop: 10, lineHeight: 21 },
-  divider: { height: StyleSheet.hairlineWidth, backgroundColor: '#e4e4e7', marginHorizontal: 16 },
-  linksCard: { backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden' },
+  faqQ: { fontSize: 15, fontWeight: '600', color: colors.text, flex: 1 },
+  faqA: { fontSize: 14, color: colors.textDim, marginTop: 10, lineHeight: 21 },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginHorizontal: 16 },
+  linksCard: { backgroundColor: colors.background, borderRadius: 16, overflow: 'hidden' },
   linkRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16 },
-  rowBorder: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#e4e4e7' },
-  linkText: { flex: 1, fontSize: 15, fontWeight: '500', color: '#18181b' },
+  rowBorder: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  linkText: { flex: 1, fontSize: 15, fontWeight: '500', color: colors.text },
 })

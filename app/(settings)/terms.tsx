@@ -1,4 +1,5 @@
 // app/(settings)/terms.tsx
+import { useTheme } from '../../lib/theme';
 import React from 'react'
 import { ScrollView, View, Text, StyleSheet } from 'react-native'
 
@@ -41,7 +42,9 @@ const SECTIONS = [
   },
 ]
 
-export default function TermsScreen() {
+export default function () {
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => getStyles(colors), [colors]);
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.date}>Last updated: March 26, 2026</Text>
@@ -67,16 +70,16 @@ export default function TermsScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+const getStyles = (colors: any) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 20, paddingBottom: 60 },
-  date: { fontSize: 13, color: '#71717a', fontWeight: '500', marginBottom: 28 },
+  date: { fontSize: 13, color: colors.textDim, fontWeight: '500', marginBottom: 28 },
   section: { marginBottom: 28 },
-  sectionTitle: { fontSize: 17, fontWeight: '800', color: '#000', marginBottom: 10, lineHeight: 24 },
+  sectionTitle: { fontSize: 17, fontWeight: '800', color: colors.text, marginBottom: 10, lineHeight: 24 },
   body: { fontSize: 15, color: '#3f3f46', lineHeight: 24 },
   bulletRow: { flexDirection: 'row', gap: 10, marginTop: 8 },
-  bulletDot: { fontSize: 18, color: '#71717a', lineHeight: 24, marginTop: -2 },
+  bulletDot: { fontSize: 18, color: colors.textDim, lineHeight: 24, marginTop: -2 },
   bulletText: { flex: 1, fontSize: 15, color: '#3f3f46', lineHeight: 24 },
-  footer: { marginTop: 20, paddingTop: 20, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#e4e4e7', alignItems: 'center' },
-  footerText: { fontSize: 13, color: '#a1a1aa' },
+  footer: { marginTop: 20, paddingTop: 20, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, alignItems: 'center' },
+  footerText: { fontSize: 13, color: colors.textDim },
 })

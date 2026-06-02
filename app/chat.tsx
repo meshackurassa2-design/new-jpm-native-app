@@ -1,11 +1,12 @@
 // app/chat.tsx — Full E2E encrypted chat with voice, emoji, and GIF support
+import { useTheme } from '../lib/theme';
 import React, { useEffect, useState, useRef, useCallback } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet,
   KeyboardAvoidingView, Platform, Image, ActivityIndicator, Alert,
-  Dimensions, Animated,
+  Dimensions, Animated, InteractionManager
 } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useLocalSearchParams, router, useFocusEffect } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { createClient } from '../lib/supabase'
@@ -16,6 +17,7 @@ import { Audio } from 'expo-av'
 import { GiphyPicker } from '../components/GiphyPicker'
 import { Skeleton } from '../components/Skeleton'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { PanResponder } from 'react-native'
 
 type Message = {
   id: string
@@ -26,11 +28,38 @@ type Message = {
   is_read: boolean
 }
 
+// ── Swipe to reply wrapper ────────────────────────────────────────────────────
+const SwipeableMessage = React.memo(({ children, onSwipe, mine }: { children: React.ReactNode; onSwipe: () => void; mine: boolean }) => {
+  const translateX = useRef(new Animated.Value(0)).current
+
+  const panResponder = useRef(PanResponder.create({
+    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 8 && Math.abs(g.dy) < 12,
+    onPanResponderMove: (_, g) => {
+      if (g.dx > 0) translateX.setValue(Math.min(g.dx, 60))
+    },
+    onPanResponderRelease: (_, g) => {
+      if (g.dx > 50) onSwipe()
+      Animated.spring(translateX, { toValue: 0, useNativeDriver: true }).start()
+    },
+    onPanResponderTerminate: () => {
+      Animated.spring(translateX, { toValue: 0, useNativeDriver: true }).start()
+    },
+  })).current
+
+  return (
+    <Animated.View style={{ flexShrink: 1, transform: [{ translateX }] }} {...panResponder.panHandlers}>
+      {children}
+    </Animated.View>
+  )
+})
+
 // Emoji grid — matches web
 const EMOJIS = ['😂', '❤️', '🔥', '👀', '😭', '💀', '🤣', '✨', '😤', '🙏', '👏', '😍', '🥺', '💪', '⚡', '🎉', '😈', '🤝', '🫡', '😎', '🤯', '💯', '👑', '🫶']
 
 // ── Voice note player component ──────────────────────────────────────────────
 const VoiceNote = React.memo(({ url, mine }: { url: string; mine: boolean }) => {
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => getStyles(colors), [colors]);
   const [playing, setPlaying] = useState(false)
   const [duration, setDuration] = useState(0)
   const [position, setPosition] = useState(0)
@@ -93,7 +122,7 @@ const VoiceNote = React.memo(({ url, mine }: { url: string; mine: boolean }) => 
       <Ionicons
         name={playing ? 'pause' : 'play'}
         size={22}
-        color={mine ? '#fff' : '#2563eb'}
+        color={mine ? colors.background : '#2563eb'}
       />
       <View style={styles.voiceWaveform}>
         <View style={[styles.voiceProgress, { width: `${progress * 100}%` as any }, mine ? styles.voiceProgressMine : null]} />
@@ -105,10 +134,13 @@ const VoiceNote = React.memo(({ url, mine }: { url: string; mine: boolean }) => 
   )
 })
 
-export default function ChatScreen() {
+export default function () {
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => getStyles(colors), [colors]);
   const { id } = useLocalSearchParams<{ id: string }>()
   const { user } = useAuth()
   const supabase = createClient()
+  const insets = useSafeAreaInsets()
 
   const [partner, setPartner] = useState<any>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -130,6 +162,10 @@ export default function ChatScreen() {
   const flatListRef = useRef<FlatList>(null)
   const inputRef = useRef<TextInput>(null)
   const didFocus = useRef(false)
+  const channelRef = useRef<any>(null)
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [isTyping, setIsTyping] = useState(false)
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null)
 
   const sharedSecret = user && id ? getSharedSecret(user.id, id) : ''
 
@@ -144,11 +180,21 @@ export default function ChatScreen() {
     }, [])
   )
 
-  // Load partner profile
+  // Load partner profile (with cache)
   useEffect(() => {
     if (!id) return
+    // Show cached partner instantly
+    AsyncStorage.getItem(`@partner_${id}`).then(cached => {
+      if (cached) try { setPartner(JSON.parse(cached)) } catch {}
+    })
+    // Then fetch fresh from network
     supabase.from('profiles').select('*').eq('id', id).single()
-      .then(({ data }) => setPartner(data))
+      .then(({ data }) => {
+        if (data) {
+          setPartner(data)
+          AsyncStorage.setItem(`@partner_${id}`, JSON.stringify(data))
+        }
+      })
   }, [id])
 
   const checkRequestStatus = useCallback(async () => {
@@ -219,7 +265,7 @@ export default function ChatScreen() {
         `and(sender_id.eq.${user.id},receiver_id.eq.${id}),` +
         `and(sender_id.eq.${id},receiver_id.eq.${user.id})`
       )
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
       .limit(100)
 
     if (data) {
@@ -241,7 +287,12 @@ export default function ChatScreen() {
       .eq('is_read', false)
   }, [user, id, sharedSecret])
 
-  useEffect(() => { loadMessages() }, [loadMessages])
+  useEffect(() => { 
+    const task = InteractionManager.runAfterInteractions(() => {
+      loadMessages()
+    })
+    return () => task.cancel()
+  }, [loadMessages])
 
   // Save cache when messages update
   useEffect(() => {
@@ -252,39 +303,93 @@ export default function ChatScreen() {
   // Real-time subscription
   useEffect(() => {
     if (!user || !id) return
+    const roomName = [user.id, id].sort().join('-')
+    const channelName = `chat-${roomName}`
+
+    // Cleanup existing channel if it's stuck in memory
+    supabase.getChannels().forEach(c => {
+      if (c.topic === `realtime:${channelName}`) supabase.removeChannel(c)
+    })
+
     const channel = supabase
-      .channel(`chat-${user.id}-${id}`)
+      .channel(channelName)
       .on('postgres_changes', {
-        event: 'INSERT',
+        event: '*',
         schema: 'public',
         table: 'messages',
-        filter: `receiver_id=eq.${user.id}`,
       }, async (payload) => {
-        if (payload.new.sender_id !== id) return
-        const decryptedContent = await decryptMessage(payload.new.content, sharedSecret)
-        setMessages(prev => [...prev, { ...payload.new, content: decryptedContent } as Message])
-        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100)
+        if (payload.eventType === 'INSERT') {
+          if (payload.new.receiver_id === user.id && payload.new.sender_id === id) {
+            const decryptedContent = await decryptMessage(payload.new.content, sharedSecret)
+            setMessages(prev => [{ ...payload.new, content: decryptedContent } as Message, ...prev])
+            setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 100)
+            supabase.from('messages').update({ is_read: true } as any).eq('id', payload.new.id).then()
+          }
+        } else if (payload.eventType === 'UPDATE') {
+          if (payload.new.sender_id === user.id) {
+            setMessages(prev => prev.map(m => m.id === payload.new.id ? { ...m, is_read: payload.new.is_read } : m))
+          }
+        }
+      })
+      .on('broadcast', { event: 'typing' }, (payload) => {
+        if (payload.payload.user_id === id) {
+          setIsTyping(true)
+          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
+          typingTimeoutRef.current = setTimeout(() => setIsTyping(false), 3000)
+        }
       })
       .subscribe()
+    
+    channelRef.current = channel
     return () => { supabase.removeChannel(channel) }
   }, [user, id, sharedSecret])
 
-  // Auto scroll to bottom
   useEffect(() => {
     if (messages.length > 0) {
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 100)
+      setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: false }), 100)
     }
   }, [messages.length])
+
+  const handleTextChange = (text: string) => {
+    setInput(text)
+    if (channelRef.current && user) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'typing',
+        payload: { user_id: user.id },
+      })
+    }
+  }
+
+  const sendPushNotification = async (type: string) => {
+    if (!partner?.push_token || !user) return
+    const body = type === 'voice' ? 'Sent you a voice note 🎤' : type === 'gif' ? 'Sent you a GIF 🖼️' : 'Sent you a new message 💬'
+    try {
+      await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: partner.push_token,
+          sound: 'default',
+          title: user.full_name || user.username || 'New Message',
+          body,
+          data: { type: 'message', sender_id: user.id },
+        }),
+      })
+    } catch (e) {}
+  }
 
   // ── Send text message ─────────────────────────────────────────────────────
   const sendMessage = async () => {
     if (!input.trim() || !user || !id || sending) return
     const text = input.trim()
+    const payloadText = replyingTo ? `reply:${replyingTo.id}|${text}` : text
     setInput('')
     setShowEmoji(false)
     setSending(true)
+    setReplyingTo(null)
 
-    const encrypted = await encryptMessage(text, sharedSecret)
+    const encrypted = await encryptMessage(payloadText, sharedSecret)
     const { error } = await supabase.from('messages').insert({
       sender_id: user.id,
       receiver_id: id,
@@ -295,15 +400,16 @@ export default function ChatScreen() {
       Alert.alert('Error', 'Failed to send message')
       setInput(text)
     } else {
-      setMessages(prev => [...prev, {
+      sendPushNotification('text')
+      setMessages(prev => [{
         id: Date.now().toString(),
-        content: text,
+        content: payloadText,
         sender_id: user.id,
         receiver_id: id,
         created_at: new Date().toISOString(),
         is_read: false,
-      }])
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50)
+      }, ...prev])
+      setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 50)
     }
     setSending(false)
   }
@@ -312,21 +418,24 @@ export default function ChatScreen() {
   const sendGif = async (url: string) => {
     if (!user || !id) return
     setShowGiphy(false)
-    const encrypted = await encryptMessage(`gif:${url}`, sharedSecret)
+    const payloadText = replyingTo ? `reply:${replyingTo.id}|gif:${url}` : `gif:${url}`
+    setReplyingTo(null)
+    const encrypted = await encryptMessage(payloadText, sharedSecret)
     const { error } = await supabase.from('messages').insert({
       sender_id: user.id,
       receiver_id: id,
       content: encrypted,
     } as any)
     if (!error) {
-      setMessages(prev => [...prev, {
+      sendPushNotification('gif')
+      setMessages(prev => [{
         id: Date.now().toString(),
-        content: `gif:${url}`,
+        content: payloadText,
         sender_id: user.id,
         receiver_id: id,
         created_at: new Date().toISOString(),
         is_read: false,
-      }])
+      }, ...prev])
     }
   }
 
@@ -413,22 +522,26 @@ export default function ChatScreen() {
       const voiceUrl = urlData?.publicUrl
       if (!voiceUrl) return
 
-      const encrypted = await encryptMessage(`voice:${voiceUrl}`, sharedSecret)
+      const payloadText = replyingTo ? `reply:${replyingTo.id}|voice:${voiceUrl}` : `voice:${voiceUrl}`
+      setReplyingTo(null)
+
+      const encrypted = await encryptMessage(payloadText, sharedSecret)
       await supabase.from('messages').insert({
         sender_id: user.id,
         receiver_id: id,
         content: encrypted,
       } as any)
 
-      setMessages(prev => [...prev, {
+      sendPushNotification('voice')
+      setMessages(prev => [{
         id: Date.now().toString(),
-        content: `voice:${voiceUrl}`,
+        content: payloadText,
         sender_id: user.id,
         receiver_id: id,
         created_at: new Date().toISOString(),
         is_read: false,
-      }])
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50)
+      }, ...prev])
+      setTimeout(() => flatListRef.current?.scrollToOffset({ offset: 0, animated: true }), 50)
 
     } catch (e) {
       console.error('Voice send failed:', e)
@@ -493,57 +606,82 @@ export default function ChatScreen() {
   // ── Render message ────────────────────────────────────────────────────────
   const renderMessage = ({ item: msg, index }: { item: Message; index: number }) => {
     const mine = msg.sender_id === user?.id
-    const prev = messages[index - 1]
-    const next = messages[index + 1]
-    const sameAsPrev = prev?.sender_id === msg.sender_id
-    const sameAsNext = next?.sender_id === msg.sender_id
+    const olderMsg = messages[index + 1]
+    const newerMsg = messages[index - 1]
+    const sameAsOlder = olderMsg?.sender_id === msg.sender_id
+    const sameAsNewer = newerMsg?.sender_id === msg.sender_id
 
-    const borderRadius = {
-      borderTopLeftRadius: mine ? 20 : (sameAsPrev ? 6 : 20),
-      borderTopRightRadius: mine ? (sameAsPrev ? 6 : 20) : 20,
-      borderBottomLeftRadius: mine ? 20 : (sameAsNext ? 6 : 20),
-      borderBottomRightRadius: mine ? (sameAsNext ? 6 : 20) : 20,
+    let actualContent = msg.content
+    let replyMsg: Message | undefined = undefined
+    if (msg.content.startsWith('reply:')) {
+      const splitIdx = msg.content.indexOf('|')
+      if (splitIdx !== -1) {
+        const replyId = msg.content.slice(6, splitIdx)
+        actualContent = msg.content.slice(splitIdx + 1)
+        replyMsg = messages.find(m => m.id === replyId)
+      }
     }
 
-    const isVoice = msg.content.startsWith('voice:')
-    const isGif = msg.content.startsWith('gif:')
+    const borderRadius = {
+      borderTopLeftRadius: mine ? 20 : (sameAsOlder ? 6 : 20),
+      borderTopRightRadius: mine ? (sameAsOlder ? 6 : 20) : 20,
+      borderBottomLeftRadius: mine ? 20 : (sameAsNewer ? 6 : 20),
+      borderBottomRightRadius: mine ? (sameAsNewer ? 6 : 20) : 20,
+    }
+
+    const isVoice = actualContent.startsWith('voice:')
+    const isGif = actualContent.startsWith('gif:')
+
+    const renderLeftActions = () => (
+      <View style={styles.swipeReplyAction}>
+        <Ionicons name="arrow-undo-outline" size={20} color={colors.textDim} />
+      </View>
+    )
 
     return (
-      <View style={[styles.msgRow, mine ? styles.msgRowMine : styles.msgRowTheirs,
-        { marginTop: sameAsPrev ? 2 : 10 }]}>
-        {!mine && !sameAsNext && partner?.avatar_url ? (
+      <View style={[styles.msgRow, mine ? styles.msgRowMine : styles.msgRowTheirs, { marginTop: sameAsOlder ? 2 : 10 }]}>
+        {!mine && !sameAsNewer && partner?.avatar_url ? (
           <Image source={{ uri: partner.avatar_url }} style={styles.msgAvatar} />
         ) : !mine ? (
           <View style={styles.msgAvatarSpacer} />
         ) : null}
 
-        {isVoice ? (
-          <View style={[
-            styles.bubble,
-            mine ? styles.bubbleMine : styles.bubbleTheirs,
-            borderRadius,
-            { paddingHorizontal: 8, paddingVertical: 6 },
-          ]}>
-            <VoiceNote url={msg.content.slice(6)} mine={mine} />
-          </View>
-        ) : isGif ? (
-          <View style={[{ overflow: 'hidden', maxWidth: '72%' }, borderRadius]}>
-            <Image
-              source={{ uri: msg.content.slice(4) }}
-              style={styles.gifMessage}
-              resizeMode="cover"
-            />
-          </View>
-        ) : (
-          <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs, borderRadius]}>
-            <Text style={mine ? styles.bubbleTextMine : styles.bubbleTextTheirs}>
-              {msg.content}
-            </Text>
-          </View>
-        )}
+        <SwipeableMessage
+          mine={mine}
+          onSwipe={() => setReplyingTo({ ...msg, content: actualContent })}
+        >
+          {replyMsg && (
+            <View style={[styles.replyPreview, mine ? styles.replyPreviewMine : styles.replyPreviewTheirs, { alignSelf: mine ? 'flex-end' : 'flex-start' }]}>
+              <Text style={styles.replyPreviewText} numberOfLines={1}>
+                {replyMsg.content.startsWith('voice:') ? '🎤 Voice note' :
+                 replyMsg.content.startsWith('gif:') ? '🖼️ GIF' :
+                 replyMsg.content.includes('|') ? replyMsg.content.split('|')[1] : replyMsg.content}
+              </Text>
+            </View>
+          )}
 
-        {mine && !sameAsNext && (
-          <Text style={styles.msgTime}>{formatTime(msg.created_at)}</Text>
+          {isVoice ? (
+            <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs, borderRadius, { paddingHorizontal: 8, paddingVertical: 6, alignSelf: mine ? 'flex-end' : 'flex-start' }]}>
+              <VoiceNote url={actualContent.slice(6)} mine={mine} />
+            </View>
+          ) : isGif ? (
+            <View style={[{ overflow: 'hidden', maxWidth: SCREEN_WIDTH * 0.72, alignSelf: mine ? 'flex-end' : 'flex-start' }, borderRadius]}>
+              <Image source={{ uri: actualContent.slice(4) }} style={styles.gifMessage} resizeMode="cover" />
+            </View>
+          ) : (
+            <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs, borderRadius, { alignSelf: mine ? 'flex-end' : 'flex-start' }]}>
+              <Text style={mine ? styles.bubbleTextMine : styles.bubbleTextTheirs}>
+                {actualContent}
+              </Text>
+            </View>
+          )}
+        </SwipeableMessage>
+
+        {mine && !sameAsNewer && (
+          <View style={styles.msgTimeRow}>
+            <Text style={styles.msgTime}>{formatTime(msg.created_at)}</Text>
+            <Ionicons name="checkmark-done" size={14} color={msg.is_read ? '#3b82f6' : colors.textDim} style={{ marginLeft: 4 }} />
+          </View>
         )}
       </View>
     )
@@ -556,18 +694,29 @@ export default function ChatScreen() {
         <BackButton style={{ marginRight: 12 }} />
         {partner?.avatar_url ? (
           <Image source={{ uri: partner.avatar_url }} style={styles.headerAvatar} />
-        ) : (
+        ) : partner ? (
           <View style={[styles.headerAvatar, styles.avatarFallback]}>
-            <Text style={styles.avatarText}>{partner?.full_name?.[0] || '?'}</Text>
+            <Text style={styles.avatarText}>{partner.full_name?.[0] || partner.username?.[0] || '?'}</Text>
           </View>
+        ) : (
+          <Skeleton width={40} height={40} borderRadius={20} />
         )}
         <TouchableOpacity
           style={{ flex: 1 }}
           onPress={() => router.push(`/user-profile?id=${id}` as any)}
           activeOpacity={0.7}
         >
-          <Text style={styles.headerName} numberOfLines={1}>{partner?.full_name || 'Loading...'}</Text>
-          <Text style={styles.headerUsername}>@{partner?.username || '...'}</Text>
+          {partner ? (
+            <>
+              <Text style={styles.headerName} numberOfLines={1}>{partner.full_name || partner.username || 'User'}</Text>
+              <Text style={styles.headerUsername}>@{partner.username || 'user'}</Text>
+            </>
+          ) : (
+            <View style={{ gap: 4 }}>
+              <Skeleton width={120} height={16} borderRadius={4} />
+              <Skeleton width={80} height={12} borderRadius={4} />
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -604,12 +753,14 @@ export default function ChatScreen() {
         ) : (
           <FlatList
             ref={flatListRef}
+            style={{ flex: 1 }}
             data={messages}
             keyExtractor={item => item.id}
             renderItem={renderMessage}
             contentContainerStyle={styles.messagesList}
             showsVerticalScrollIndicator={false}
-            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+            inverted
+            onContentSizeChange={() => {}}
             keyboardShouldPersistTaps="handled"
             ListEmptyComponent={
               <View style={styles.empty}>
@@ -635,13 +786,13 @@ export default function ChatScreen() {
 
         {/* ── Input bar / Request status ── */}
         {checkingRequest ? (
-          <View style={styles.requestBanner}>
+          <View style={[styles.requestBanner, { paddingBottom: Math.max(insets.bottom, 20) }]}>
             <ActivityIndicator size="small" color="#000" />
           </View>
         ) : requestStatus === 'allowed' ? (
           recording ? (
             // ── Recording UI ──
-            <View style={styles.recordingBar}>
+            <View style={[styles.recordingBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
               <TouchableOpacity onPress={cancelRecording} style={styles.recordCancelBtn}>
                 <Ionicons name="close" size={24} color="#ef4444" />
               </TouchableOpacity>
@@ -655,15 +806,36 @@ export default function ChatScreen() {
             </View>
           ) : (
             // ── Normal input bar ──
-            <View style={styles.inputBar}>
-              <View style={styles.inputRow}>
-                <TextInput
-                  ref={inputRef}
-                  style={styles.input}
-                  placeholder="Type a message..."
-                  placeholderTextColor="#a1a1aa"
-                  value={input}
-                  onChangeText={setInput}
+            <>
+              {replyingTo && (
+                <View style={styles.replyingToBar}>
+                  <View style={styles.replyingToContent}>
+                    <Text style={styles.replyingToLabel}>Replying to {replyingTo.sender_id === user.id ? 'yourself' : partner?.full_name?.split(' ')[0]}</Text>
+                    <Text style={styles.replyingToText} numberOfLines={1}>
+                      {replyingTo.content.startsWith('voice:') ? '🎤 Voice note' : 
+                       replyingTo.content.startsWith('gif:') ? '🖼️ GIF' : 
+                       replyingTo.content}
+                    </Text>
+                  </View>
+                  <TouchableOpacity onPress={() => setReplyingTo(null)} style={{ padding: 4 }}>
+                    <Ionicons name="close-circle" size={24} color={colors.textDim} />
+                  </TouchableOpacity>
+                </View>
+              )}
+              {isTyping && (
+                <Text style={styles.typingIndicatorText}>
+                  {partner?.full_name?.split(' ')[0] || partner?.username || 'User'} is typing...
+                </Text>
+              )}
+              <View style={[styles.inputBar, { paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 8) : 8 }]}>
+                <View style={styles.inputRow}>
+                  <TextInput
+                    ref={inputRef}
+                    style={styles.input}
+                    placeholder="Type a message..."
+                    placeholderTextColor="#a1a1aa"
+                    value={input}
+                    onChangeText={handleTextChange}
                   multiline
                   maxLength={1000}
                 />
@@ -685,7 +857,7 @@ export default function ChatScreen() {
                   style={styles.inputIconBtn}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <Ionicons name="happy-outline" size={24} color={showEmoji ? '#2563eb' : '#a1a1aa'} />
+                  <Ionicons name="happy-outline" size={24} color={showEmoji ? '#2563eb' : colors.textDim} />
                 </TouchableOpacity>
 
                 {/* Mic button — only when no text */}
@@ -716,14 +888,15 @@ export default function ChatScreen() {
                 </TouchableOpacity>
               ) : null}
             </View>
+            </>
           )
         ) : requestStatus === 'pending_sent' ? (
-          <View style={styles.requestBanner}>
+          <View style={[styles.requestBanner, { paddingBottom: Math.max(insets.bottom, 20) }]}>
             <Text style={styles.requestBannerTitle}>Message request sent</Text>
             <Text style={styles.requestBannerDesc}>You can message {partner?.full_name} once they accept your request.</Text>
           </View>
         ) : requestStatus === 'pending_received' ? (
-          <View style={styles.requestBanner}>
+          <View style={[styles.requestBanner, { paddingBottom: Math.max(insets.bottom, 20) }]}>
             <Text style={styles.requestBannerTitle}>{partner?.full_name} wants to message you.</Text>
             <View style={styles.requestBannerActions}>
               <TouchableOpacity style={styles.btnDecline} onPress={declineRequest}>
@@ -735,11 +908,11 @@ export default function ChatScreen() {
             </View>
           </View>
         ) : requestStatus === 'declined' ? (
-          <View style={styles.requestBanner}>
+          <View style={[styles.requestBanner, { paddingBottom: Math.max(insets.bottom, 20) }]}>
             <Text style={styles.requestBannerDesc}>This request was declined.</Text>
           </View>
         ) : (
-          <View style={styles.requestBanner}>
+          <View style={[styles.requestBanner, { paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 20) : 20 }]}>
             <Text style={styles.requestBannerDesc}>To start a conversation, send a message request to {partner?.full_name}.</Text>
             <TouchableOpacity style={styles.btnAccept} onPress={sendMessageRequest}>
               <Text style={styles.btnAcceptText}>Send Message Request</Text>
@@ -760,23 +933,23 @@ export default function ChatScreen() {
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window')
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+const getStyles = (colors: any) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
   // Header
   header: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 16, paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#e4e4e7',
-    backgroundColor: '#fff',
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border,
+    backgroundColor: colors.background,
   },
   backBtn: { padding: 4 },
   headerAvatar: { width: 40, height: 40, borderRadius: 20, overflow: 'hidden' },
-  avatarFallback: { backgroundColor: '#e4e4e7', justifyContent: 'center', alignItems: 'center' },
-  avatarText: { fontSize: 16, fontWeight: '700', color: '#71717a' },
-  headerName: { fontSize: 16, fontWeight: '700', color: '#18181b' },
-  headerUsername: { fontSize: 13, color: '#71717a', marginTop: 1 },
+  avatarFallback: { backgroundColor: colors.border, justifyContent: 'center', alignItems: 'center' },
+  avatarText: { fontSize: 16, fontWeight: '700', color: colors.textDim },
+  headerName: { fontSize: 16, fontWeight: '700', color: colors.text },
+  headerUsername: { fontSize: 13, color: colors.textDim, marginTop: 1 },
 
   // Messages
   messagesList: { paddingHorizontal: 12, paddingVertical: 12, flexGrow: 1 },
@@ -785,12 +958,13 @@ const styles = StyleSheet.create({
   msgRowTheirs: { justifyContent: 'flex-start' },
   msgAvatar: { width: 28, height: 28, borderRadius: 14 },
   msgAvatarSpacer: { width: 28 },
-  bubble: { maxWidth: '72%', paddingHorizontal: 14, paddingVertical: 10 },
+  bubble: { maxWidth: SCREEN_WIDTH * 0.72, paddingHorizontal: 14, paddingVertical: 10 },
   bubbleMine: { backgroundColor: '#2563eb' },
-  bubbleTheirs: { backgroundColor: '#f4f4f5' },
-  bubbleTextMine: { fontSize: 15, color: '#fff', lineHeight: 21 },
-  bubbleTextTheirs: { fontSize: 15, color: '#18181b', lineHeight: 21 },
-  msgTime: { fontSize: 10, color: '#a1a1aa', marginBottom: 2, alignSelf: 'flex-end' },
+  bubbleTheirs: { backgroundColor: colors.border },
+  bubbleTextMine: { fontSize: 15, color: colors.background, lineHeight: 21 },
+  bubbleTextTheirs: { fontSize: 15, color: colors.text, lineHeight: 21 },
+  msgTime: { fontSize: 11, color: colors.textDim, marginTop: 4, alignSelf: 'flex-end', marginHorizontal: 4 },
+  msgTimeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4, marginHorizontal: 4 },
 
   // GIF in message
   gifMessage: { width: SCREEN_WIDTH * 0.55, height: SCREEN_WIDTH * 0.4, borderRadius: 16 },
@@ -804,16 +978,16 @@ const styles = StyleSheet.create({
     flex: 1, height: 6, backgroundColor: 'rgba(255,255,255,0.25)',
     borderRadius: 3, overflow: 'hidden',
   },
-  voiceProgress: { height: '100%', backgroundColor: '#fff', borderRadius: 3 },
-  voiceProgressMine: { backgroundColor: '#fff' },
-  voiceTime: { fontSize: 12, color: '#71717a', fontVariant: ['tabular-nums'] },
+  voiceProgress: { height: '100%', backgroundColor: colors.background, borderRadius: 3 },
+  voiceProgressMine: { backgroundColor: colors.background },
+  voiceTime: { fontSize: 12, color: colors.textDim, fontVariant: ['tabular-nums'] },
   voiceTimeMine: { color: 'rgba(255,255,255,0.8)' },
 
   // Emoji picker
   emojiPicker: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.background,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#e4e4e7',
+    borderTopColor: colors.border,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
@@ -827,26 +1001,26 @@ const styles = StyleSheet.create({
   inputBar: {
     flexDirection: 'row', alignItems: 'flex-end', gap: 8,
     paddingHorizontal: 12, paddingVertical: 8,
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#e4e4e7',
-    backgroundColor: '#fff',
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border,
+    backgroundColor: colors.background,
   },
   inputRow: {
     flex: 1, flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#f4f4f5', borderRadius: 24,
+    backgroundColor: colors.border, borderRadius: 24,
     paddingHorizontal: 14, paddingVertical: Platform.OS === 'ios' ? 8 : 4,
     minHeight: 44,
   },
-  input: { flex: 1, fontSize: 15, color: '#18181b', maxHeight: 100, paddingVertical: 0 },
+  input: { flex: 1, fontSize: 15, color: colors.text, maxHeight: 100, paddingVertical: 0 },
   inputIconBtn: { paddingHorizontal: 4, paddingVertical: 4 },
 
   // GIF icon
   gifIconBox: {
-    borderWidth: 1.5, borderColor: '#a1a1aa', borderRadius: 6,
+    borderWidth: 1.5, borderColor: colors.textDim, borderRadius: 6,
     paddingHorizontal: 4, paddingVertical: 1,
   },
   gifIconBoxActive: { borderColor: '#2563eb', backgroundColor: '#2563eb' },
-  gifIconText: { fontSize: 11, fontWeight: '900', color: '#a1a1aa' },
-  gifIconTextActive: { color: '#fff' },
+  gifIconText: { fontSize: 11, fontWeight: '900', color: colors.textDim },
+  gifIconTextActive: { color: colors.background },
 
   // Send button
   sendBtn: {
@@ -860,8 +1034,8 @@ const styles = StyleSheet.create({
   recordingBar: {
     flexDirection: 'row', alignItems: 'center', gap: 16,
     paddingHorizontal: 16, paddingVertical: 12,
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#e4e4e7',
-    backgroundColor: '#fff',
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border,
+    backgroundColor: colors.background,
   },
   recordCancelBtn: { padding: 4 },
   recordingInfo: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -876,22 +1050,41 @@ const styles = StyleSheet.create({
   // Request banners
   requestBanner: {
     paddingHorizontal: 16, paddingVertical: 20,
-    backgroundColor: '#fff', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#e4e4e7',
+    backgroundColor: colors.background, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border,
     alignItems: 'center', gap: 8,
   },
-  requestBannerTitle: { fontSize: 14, fontWeight: '700', color: '#18181b', textAlign: 'center' },
-  requestBannerDesc: { fontSize: 13, color: '#71717a', textAlign: 'center', marginBottom: 8 },
+  requestBannerTitle: { fontSize: 14, fontWeight: '700', color: colors.text, textAlign: 'center' },
+  requestBannerDesc: { fontSize: 14, color: colors.textDim, textAlign: 'center', marginTop: 4 },
+  typingIndicatorText: {
+    fontSize: 13, color: colors.textDim, fontStyle: 'italic',
+    paddingHorizontal: 20, paddingBottom: 6,
+  },
+  swipeReplyAction: { width: 50, justifyContent: 'center', alignItems: 'center' },
+  replyPreview: {
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, marginBottom: 4, maxWidth: '72%',
+    borderLeftWidth: 3,
+  },
+  replyPreviewMine: { backgroundColor: 'rgba(37, 99, 235, 0.1)', borderLeftColor: '#2563eb' },
+  replyPreviewTheirs: { backgroundColor: colors.border, borderLeftColor: colors.textDim },
+  replyPreviewText: { fontSize: 13, color: colors.textDim },
+  replyingToBar: {
+    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10,
+    backgroundColor: colors.background, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border,
+  },
+  replyingToContent: { flex: 1 },
+  replyingToLabel: { fontSize: 13, fontWeight: '600', color: '#2563eb', marginBottom: 2 },
+  replyingToText: { fontSize: 13, color: colors.textDim },
   requestBannerActions: { flexDirection: 'row', gap: 12 },
   btnDecline: {
     paddingHorizontal: 24, paddingVertical: 10, borderRadius: 20,
-    borderWidth: 1, borderColor: '#e4e4e7',
+    borderWidth: 1, borderColor: colors.border,
   },
   btnDeclineText: { fontSize: 14, fontWeight: '700', color: '#52525b' },
   btnAccept: {
     paddingHorizontal: 24, paddingVertical: 10, borderRadius: 20,
-    backgroundColor: '#18181b',
+    backgroundColor: colors.text,
   },
-  btnAcceptText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  btnAcceptText: { fontSize: 14, fontWeight: '700', color: colors.background },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80, gap: 12 },
-  emptyText: { color: '#a1a1aa', fontSize: 15 },
+  emptyText: { color: colors.textDim, fontSize: 15 },
 })

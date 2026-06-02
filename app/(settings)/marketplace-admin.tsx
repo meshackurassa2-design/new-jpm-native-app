@@ -1,4 +1,5 @@
 // app/(settings)/marketplace-admin.tsx
+import { useTheme } from '../../lib/theme';
 import React, { useEffect, useState } from 'react'
 import { View, Text, FlatList, TouchableOpacity, StyleSheet,
   ActivityIndicator, Alert
@@ -6,7 +7,9 @@ import { View, Text, FlatList, TouchableOpacity, StyleSheet,
 import { Ionicons } from '@expo/vector-icons'
 import { createClient } from '../../lib/supabase'
 
-export default function MarketplaceAdminScreen() {
+export default function () {
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => getStyles(colors), [colors]);
   const supabase = createClient()
   const [shops, setShops] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -112,19 +115,19 @@ export default function MarketplaceAdminScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f4f4f5' },
+const getStyles = (colors: any) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.border },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  tabs: { flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e4e4e7' },
+  tabs: { flexDirection: 'row', backgroundColor: colors.background, borderBottomWidth: 1, borderBottomColor: colors.border },
   tab: { flex: 1, paddingVertical: 14, alignItems: 'center' },
-  tabActive: { borderBottomWidth: 2, borderBottomColor: '#000' },
-  tabText: { fontSize: 14, fontWeight: '600', color: '#71717a' },
-  tabTextActive: { color: '#000' },
+  tabActive: { borderBottomWidth: 2, borderBottomColor: colors.text },
+  tabText: { fontSize: 14, fontWeight: '600', color: colors.textDim },
+  tabTextActive: { color: colors.text },
   list: { padding: 16, gap: 16 },
-  card: { backgroundColor: '#fff', borderRadius: 12, padding: 16, elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { height: 2, width: 0 } },
-  cardTitle: { fontSize: 16, fontWeight: '700', color: '#000' },
+  card: { backgroundColor: colors.background, borderRadius: 12, padding: 16, elevation: 2, shadowColor: colors.text, shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { height: 2, width: 0 } },
+  cardTitle: { fontSize: 16, fontWeight: '700', color: colors.text },
   cardDesc: { fontSize: 14, color: '#3f3f46', marginBottom: 12, lineHeight: 20 },
-  cardMeta: { fontSize: 12, color: '#71717a' },
+  cardMeta: { fontSize: 12, color: colors.textDim },
   actions: { flexDirection: 'row', gap: 12, marginTop: 16 },
   btn: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center', borderWidth: 1 },
   btnApprove: { borderColor: '#16a34a', backgroundColor: '#f0fdf4' },
@@ -133,7 +136,7 @@ const styles = StyleSheet.create({
   btnRejectText: { color: '#dc2626', fontWeight: '700' },
   rejectedReason: { marginTop: 12, padding: 10, backgroundColor: '#fef2f2', color: '#dc2626', borderRadius: 8, fontSize: 13, fontWeight: '500' },
   empty: { flex: 1, alignItems: 'center', paddingTop: 100, gap: 12 },
-  emptyText: { color: '#a1a1aa', fontSize: 16 },
+  emptyText: { color: colors.textDim, fontSize: 16 },
 })
 
 

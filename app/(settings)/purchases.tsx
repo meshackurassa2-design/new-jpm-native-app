@@ -1,4 +1,5 @@
 // app/(settings)/purchases.tsx
+import { useTheme } from '../../lib/theme';
 import React, { useEffect, useState } from 'react'
 import {
   View, Text, StyleSheet, FlatList,
@@ -23,7 +24,9 @@ type Order = {
   order_items: OrderItem[]
 }
 
-export default function PurchasesScreen() {
+export default function () {
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => getStyles(colors), [colors]);
   const { user } = useAuth()
   const supabase = createClient()
   const [orders, setOrders] = useState<Order[]>([])
@@ -110,17 +113,17 @@ export default function PurchasesScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f4f4f5' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f4f4f5' },
+const getStyles = (colors: any) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.border },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.border },
   listContent: { padding: 16, paddingBottom: 60 },
   orderCard: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.background,
     borderRadius: 16,
     marginBottom: 16,
     padding: 16,
     elevation: 1,
-    shadowColor: '#000',
+    shadowColor: colors.text,
     shadowOpacity: 0.04,
     shadowRadius: 6,
     shadowOffset: { height: 1, width: 0 },
@@ -131,24 +134,24 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: 4,
   },
-  orderId: { fontSize: 15, fontWeight: '700', color: '#000', marginBottom: 2 },
-  orderDate: { fontSize: 13, color: '#71717a' },
+  orderId: { fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 2 },
+  orderDate: { fontSize: 13, color: colors.textDim },
   statusBadge: {
     paddingHorizontal: 10, paddingVertical: 4,
-    backgroundColor: '#f4f4f5', borderRadius: 20,
+    backgroundColor: colors.border, borderRadius: 20,
   },
   statusBadgeSuccess: { backgroundColor: '#dcfce7' },
-  statusText: { fontSize: 12, fontWeight: '700', color: '#71717a' },
+  statusText: { fontSize: 12, fontWeight: '700', color: colors.textDim },
   statusTextSuccess: { color: '#166534' },
-  divider: { height: StyleSheet.hairlineWidth, backgroundColor: '#e4e4e7', marginVertical: 12 },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginVertical: 12 },
   productRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  productIcon: { width: 30, height: 30, borderRadius: 8, backgroundColor: '#f4f4f5', justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+  productIcon: { width: 30, height: 30, borderRadius: 8, backgroundColor: colors.border, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
   productName: { flex: 1, fontSize: 14, color: '#27272a' },
-  productPrice: { fontSize: 14, fontWeight: '600', color: '#000' },
+  productPrice: { fontSize: 14, fontWeight: '600', color: colors.text },
   orderFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  totalLabel: { fontSize: 14, color: '#71717a', fontWeight: '500' },
-  totalAmount: { fontSize: 17, fontWeight: '800', color: '#000' },
+  totalLabel: { fontSize: 14, color: colors.textDim, fontWeight: '500' },
+  totalAmount: { fontSize: 17, fontWeight: '800', color: colors.text },
   emptyState: { alignItems: 'center', paddingTop: 100 },
-  emptyTitle: { fontSize: 18, fontWeight: '700', color: '#18181b', marginTop: 16, marginBottom: 6 },
-  emptyDesc: { fontSize: 14, color: '#a1a1aa' },
+  emptyTitle: { fontSize: 18, fontWeight: '700', color: colors.text, marginTop: 16, marginBottom: 6 },
+  emptyDesc: { fontSize: 14, color: colors.textDim },
 })

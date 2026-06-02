@@ -1,4 +1,5 @@
 // components/StoryViewer.tsx — Full-screen native story viewer
+import { useTheme } from '../lib/theme';
 import React, { useEffect, useState, useRef } from 'react'
 import {
   View, Text, Image, TouchableOpacity, StyleSheet,
@@ -10,6 +11,7 @@ import { createClient } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { encryptMessage, getSharedSecret } from '../lib/crypto'
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window')
 const DURATION = 5000
@@ -43,11 +45,14 @@ interface StoryGroup {
 interface Props {
   groups: StoryGroup[]
   startGroupIndex: number
+  visible: boolean
   onClose: () => void
   onViewed: () => void
 }
 
-export function StoryViewer({ groups, startGroupIndex, onClose, onViewed }: Props) {
+export function StoryViewer({ groups, startGroupIndex, visible, onClose, onViewed }: Props) {
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => getStyles(colors), [colors]);
   const { user } = useAuth()
   const supabase = createClient()
   const insets = useSafeAreaInsets()
@@ -104,11 +109,20 @@ export function StoryViewer({ groups, startGroupIndex, onClose, onViewed }: Prop
     else startProgress()
   }, [isPaused])
 
+  const groupIndexRef = useRef(groupIndex)
+  const slideIndexRef = useRef(slideIndex)
+  useEffect(() => { groupIndexRef.current = groupIndex }, [groupIndex])
+  useEffect(() => { slideIndexRef.current = slideIndex }, [slideIndex])
+
   const goNext = () => {
-    if (slideIndex < currentGroup.stories.length - 1) {
-      setSlideIndex(s => s + 1)
-    } else if (groupIndex < groups.length - 1) {
-      setGroupIndex(g => g + 1)
+    const gi = groupIndexRef.current
+    const si = slideIndexRef.current
+    const grp = groups[gi]
+    if (!grp) { onClose(); return }
+    if (si < grp.stories.length - 1) {
+      setSlideIndex(si + 1)
+    } else if (gi < groups.length - 1) {
+      setGroupIndex(gi + 1)
       setSlideIndex(0)
     } else {
       onViewed()
@@ -117,7 +131,9 @@ export function StoryViewer({ groups, startGroupIndex, onClose, onViewed }: Prop
   }
 
   const goPrev = () => {
-    if (slideIndex > 0) {
+    const gi = groupIndexRef.current
+    const si = slideIndexRef.current
+    if (si > 0) {
       setSlideIndex(s => s - 1)
     } else if (groupIndex > 0) {
       setGroupIndex(g => g - 1)
@@ -139,28 +155,70 @@ export function StoryViewer({ groups, startGroupIndex, onClose, onViewed }: Prop
     }
   }
 
+  const sendPushNotification = async (partnerId: string, type: string) => {
+    try {
+      const { data: profile } = await supabase.from('profiles').select('push_token').eq('id', partnerId).single()
+      if (!profile?.push_token || !user) return
+      await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: profile.push_token,
+          sound: 'default',
+          title: user.full_name || user.username || 'New Message',
+          body: type === 'reaction' ? 'Reacted to your story 🌟' : 'Replied to your story 💬',
+          data: { type: 'message', sender_id: user.id },
+        }),
+      })
+    } catch {}
+  }
+
   const handleReply = async () => {
     if (!user || !current || !reply.trim() || sending) return
     setSending(true)
     const content = reply.trim()
     setReply('')
 
-    // Send as DM to the story creator
+    const secret = getSharedSecret(user.id, current.creator_id)
+    const encrypted = await encryptMessage(`Replied to story: ${content}`, secret)
+
     await supabase.from('messages').insert({
       sender_id: user.id,
       receiver_id: current.creator_id,
-      content: `Replied to story: ${content}`,
-    })
+      content: encrypted,
+    } as any)
+    
+    sendPushNotification(current.creator_id, 'reply')
     setSending(false)
     setIsPaused(false)
   }
 
+  const handleReaction = async (emoji: string) => {
+    if (!user || !current || sending) return
+    setSending(true)
+    
+    const secret = getSharedSecret(user.id, current.creator_id)
+    const encrypted = await encryptMessage(`Reacted to your story: ${emoji}`, secret)
+
+    await supabase.from('messages').insert({
+      sender_id: user.id,
+      receiver_id: current.creator_id,
+      content: encrypted,
+    } as any)
+    
+    sendPushNotification(current.creator_id, 'reaction')
+    setSending(false)
+    setIsPaused(false)
+    onClose()
+  }
+
   if (!current || !currentGroup) return null
 
-  const bgColor = current.bg_color || '#000'
+  const bgColor = current.bg_color || '#000000'
+  const textColor = bgColor === '#ffffff' ? '#000000' : '#ffffff'
 
   return (
-    <Modal visible animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="fade" statusBarTranslucent onRequestClose={onClose}>
       <View style={[styles.container, { backgroundColor: bgColor }]}>
         {/* Background image */}
         {current.image_url ? (
@@ -200,7 +258,7 @@ export function StoryViewer({ groups, startGroupIndex, onClose, onViewed }: Prop
               <Image source={{ uri: currentGroup.profile.avatar_url }} style={styles.headerAvatar} />
             ) : (
               <View style={[styles.headerAvatar, styles.headerAvatarFallback]}>
-                <Text style={{ color: '#fff', fontWeight: '700' }}>
+                <Text style={{ color: '#ffffff', fontWeight: '700' }}>
                   {currentGroup.profile?.full_name?.[0] || '?'}
                 </Text>
               </View>
@@ -219,7 +277,7 @@ export function StoryViewer({ groups, startGroupIndex, onClose, onViewed }: Prop
         {/* Text overlay */}
         {current.text_content ? (
           <View style={styles.textOverlay}>
-            <Text style={[styles.storyText, { color: bgColor === '#ffffff' ? '#000' : '#fff' }]}>
+            <Text style={[styles.storyText, { color: textColor }]}>
               {current.text_content}
             </Text>
           </View>
@@ -238,31 +296,41 @@ export function StoryViewer({ groups, startGroupIndex, onClose, onViewed }: Prop
           behavior={Platform.OS === 'ios' ? 'position' : 'height'}
           style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}
         >
-          {user ? (
-            <View style={styles.replyRow}>
-              <TextInput
-                style={styles.replyInput}
-                placeholder="Send message..."
-                placeholderTextColor="rgba(255,255,255,0.5)"
-                value={reply}
-                onChangeText={setReply}
-                onFocus={() => setIsPaused(true)}
-                onBlur={() => setIsPaused(false)}
-                onSubmitEditing={handleReply}
-              />
-              <TouchableOpacity style={styles.likeBtn} onPress={handleLike} activeOpacity={0.7}>
-                <Ionicons
-                  name={isLiked ? 'heart' : 'heart-outline'}
-                  size={26}
-                  color={isLiked ? '#ef4444' : '#fff'}
+          {user && user.id !== current.creator_id ? (
+            <View>
+              <View style={styles.replyRow}>
+                <TextInput
+                  style={styles.replyInput}
+                  placeholder="Send message..."
+                  placeholderTextColor="rgba(255,255,255,0.5)"
+                  value={reply}
+                  onChangeText={setReply}
+                  onFocus={() => setIsPaused(true)}
+                  onBlur={() => setIsPaused(false)}
+                  onSubmitEditing={handleReply}
                 />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.likeBtn} onPress={handleReply} activeOpacity={0.7}>
-                {sending
-                  ? <ActivityIndicator size="small" color="#fff" />
-                  : <Ionicons name="paper-plane-outline" size={24} color="#fff" />
-                }
-              </TouchableOpacity>
+                <TouchableOpacity style={styles.likeBtn} onPress={handleLike} activeOpacity={0.7}>
+                  <Ionicons
+                    name={isLiked ? 'heart' : 'heart-outline'}
+                    size={26}
+                    color={isLiked ? '#ef4444' : '#ffffff'}
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.likeBtn} onPress={handleReply} activeOpacity={0.7}>
+                  {sending
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : <Ionicons name="paper-plane-outline" size={24} color="#fff" />
+                  }
+                </TouchableOpacity>
+              </View>
+              
+              <View style={styles.quickReactionsRow}>
+                {['❤️', '😂', '😮', '🔥', '👏'].map(emoji => (
+                  <TouchableOpacity key={emoji} onPress={() => handleReaction(emoji)} style={styles.quickReactionBtn}>
+                    <Text style={styles.quickReactionEmoji}>{emoji}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           ) : null}
         </KeyboardAvoidingView>
@@ -271,8 +339,8 @@ export function StoryViewer({ groups, startGroupIndex, onClose, onViewed }: Prop
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
+const getStyles = (colors: any) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#000000' },
   bgImage: { ...StyleSheet.absoluteFillObject },
   overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.25)' },
   progressRow: {
@@ -282,7 +350,7 @@ const styles = StyleSheet.create({
   progressTrack: {
     flex: 1, height: 3, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 2, overflow: 'hidden',
   },
-  progressFill: { height: '100%', backgroundColor: '#fff', borderRadius: 2 },
+  progressFill: { height: '100%', backgroundColor: '#ffffff', borderRadius: 2 },
   header: {
     position: 'absolute', left: 16, right: 16,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', zIndex: 50,
@@ -290,7 +358,7 @@ const styles = StyleSheet.create({
   headerProfile: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
   headerAvatar: { width: 40, height: 40, borderRadius: 20, borderWidth: 2, borderColor: 'rgba(255,255,255,0.5)' },
   headerAvatarFallback: { backgroundColor: '#444', justifyContent: 'center', alignItems: 'center' },
-  headerName: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  headerName: { color: '#ffffff', fontSize: 14, fontWeight: '700' },
   headerTime: { color: 'rgba(255,255,255,0.6)', fontSize: 11, marginTop: 1 },
   closeBtn: { padding: 4 },
   textOverlay: {
@@ -309,11 +377,14 @@ const styles = StyleSheet.create({
   replyInput: {
     flex: 1, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
     borderRadius: 28, paddingHorizontal: 18, paddingVertical: 10,
-    color: '#fff', fontSize: 15, backgroundColor: 'rgba(255,255,255,0.1)',
+    color: '#ffffff', fontSize: 15, backgroundColor: 'rgba(255,255,255,0.1)',
   },
   likeBtn: {
     width: 44, height: 44, borderRadius: 22,
     backgroundColor: 'rgba(255,255,255,0.15)',
     justifyContent: 'center', alignItems: 'center',
   },
+  quickReactionsRow: { flexDirection: 'row', justifyContent: 'center', gap: 16, marginTop: 16, paddingBottom: 8 },
+  quickReactionBtn: { padding: 8, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 24 },
+  quickReactionEmoji: { fontSize: 28 },
 })

@@ -12,6 +12,14 @@ import * as Notifications from 'expo-notifications'
 import { registerForPushNotificationsAsync } from '../lib/push'
 import { SplashScreen } from '../components/SplashScreen'
 import { UIProvider } from '../lib/ui'
+import { ThemeProvider } from '../lib/theme'
+import * as Updates from 'expo-updates'
+import Constants from 'expo-constants'
+
+import { initAdMob } from '../lib/admob'
+
+// Initialize Google Mobile Ads SDK (Skipped on Web and Expo Go)
+initAdMob()
 
 // Configure how notifications appear when the app is in the foreground
 Notifications.setNotificationHandler({
@@ -65,31 +73,57 @@ function PushNotificationSetup() {
   return null
 }
 
+function AutoUpdateSetup() {
+  useEffect(() => {
+    async function onFetchUpdateAsync() {
+      try {
+        const update = await Updates.checkForUpdateAsync()
+        if (update.isAvailable) {
+          await Updates.fetchUpdateAsync()
+          await Updates.reloadAsync()
+        }
+      } catch (error) {
+        console.log('Error fetching update:', error)
+      }
+    }
+    // Only check for updates in production
+    if (!__DEV__) {
+      onFetchUpdateAsync()
+    }
+  }, [])
+  
+  return null
+}
+
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <AuthProvider>
-        <CartProvider>
-          <UIProvider>
-            <PushNotificationSetup />
-            <StatusBar style="auto" />
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="create-post" options={{ presentation: 'modal', headerShown: false }} />
-            <Stack.Screen name="user-profile" options={{ headerShown: false }} />
-            <Stack.Screen name="chat" options={{ headerShown: false }} />
-            <Stack.Screen name="post/[id]" options={{ headerShown: false }} />
-            <Stack.Screen name="notifications" options={{ headerShown: false }} />
-            <Stack.Screen name="product/[id]" options={{ presentation: 'fullScreenModal', headerShown: false }} />
-            <Stack.Screen name="cart" options={{ presentation: 'modal', headerShown: false }} />
-            <Stack.Screen name="register-shop" options={{ presentation: 'modal', headerShown: false }} />
-            <Stack.Screen name="shop/[id]" options={{ headerShown: false }} />
-          </Stack>
-          <SplashScreen />
-          </UIProvider>
-        </CartProvider>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <CartProvider>
+            <UIProvider>
+              <PushNotificationSetup />
+              <AutoUpdateSetup />
+              <StatusBar style="auto" />
+            <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+              <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen name="create-post" options={{ presentation: 'modal', headerShown: false }} />
+              <Stack.Screen name="user-profile" options={{ headerShown: false }} />
+              <Stack.Screen name="chat" options={{ headerShown: false }} />
+              <Stack.Screen name="post/[id]" options={{ headerShown: false }} />
+              <Stack.Screen name="notifications" options={{ headerShown: false }} />
+              <Stack.Screen name="product/[id]" options={{ presentation: 'fullScreenModal', headerShown: false }} />
+              <Stack.Screen name="cart" options={{ presentation: 'modal', headerShown: false }} />
+              <Stack.Screen name="checkout" options={{ presentation: 'fullScreenModal', headerShown: false, contentStyle: { backgroundColor: '#000000' } }} />
+              <Stack.Screen name="register-shop" options={{ presentation: 'modal', headerShown: false }} />
+              <Stack.Screen name="shop/[id]" options={{ headerShown: false }} />
+            </Stack>
+            <SplashScreen />
+            </UIProvider>
+          </CartProvider>
+        </AuthProvider>
+      </ThemeProvider>
     </GestureHandlerRootView>
   )
 }

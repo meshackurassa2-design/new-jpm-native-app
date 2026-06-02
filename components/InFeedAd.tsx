@@ -1,75 +1,119 @@
-import React, { useState } from 'react'
-import { View, StyleSheet, Text, ActivityIndicator, Platform } from 'react-native'
-import { BannerAd, BannerAdSize, TestIds } from 'react-native-google-mobile-ads'
+import React from 'react';
+import { View, Text, StyleSheet } from 'react-native';
+import Constants from 'expo-constants';
+import { useTheme } from '../lib/theme';
 
-// Test ID for dev. You'll swap this in production with your real Ad unit ID.
-const adUnitId = __DEV__ ? TestIds.BANNER : (Platform.OS === 'ios' ? 'ca-app-pub-xxxxxxxxxxx/xxxxxxxx' : 'ca-app-pub-xxxxxxxxxxx/xxxxxxxx')
+let BannerAd: any = null;
+let BannerAdSize: any = null;
+let TestIds: any = null;
+
+const isExpoGo = Constants.appOwnership === 'expo';
+
+if (!isExpoGo) {
+  try {
+    const admob = require('react-native-google-mobile-ads');
+    BannerAd = admob.BannerAd;
+    BannerAdSize = admob.BannerAdSize;
+    TestIds = admob.TestIds;
+  } catch (e) {
+    console.warn('Google Mobile Ads not loaded', e);
+  }
+}
 
 export function InFeedAd() {
-  const [isLoaded, setIsLoaded] = useState(false)
-  const [hasError, setHasError] = useState(false)
-
-  if (hasError) return null // Hide ad space if it fails to load
+  const { colors } = useTheme();
+  
+  if (isExpoGo || !BannerAd) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <Text style={[styles.title, { color: colors.text }]}>Ad Placeholder</Text>
+        <Text style={{ color: colors.textDim }}>Ads will appear here in the final APK.</Text>
+      </View>
+    );
+  }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.adHeader}>
-        <Text style={styles.sponsoredText}>Sponsored</Text>
-      </View>
-      <View style={styles.adContainer}>
-        {!isLoaded && (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator color="#a1a1aa" />
-          </View>
-        )}
+    <View style={[styles.adContainer, { backgroundColor: colors.background }]}>
+      <Text style={[styles.sponsoredText, { color: colors.textDim }]}>Sponsored</Text>
+      <View style={styles.adWrapper}>
         <BannerAd
-          unitId={adUnitId}
+          unitId={TestIds.BANNER}
           size={BannerAdSize.MEDIUM_RECTANGLE}
           requestOptions={{
             requestNonPersonalizedAdsOnly: true,
           }}
-          onAdLoaded={() => setIsLoaded(true)}
-          onAdFailedToLoad={(error) => {
-            console.error('Ad failed to load: ', error)
-            setHasError(true)
-          }}
         />
       </View>
     </View>
-  )
+  );
+}
+
+export function TextWalletAd() {
+  const { colors } = useTheme();
+  
+  if (isExpoGo || !BannerAd) {
+    return (
+      <View style={[styles.walletAdContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <Text style={{ color: colors.textDim }}>Banner Ad Placeholder (APK only)</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.walletAdContainer}>
+      <BannerAd
+        unitId={TestIds.BANNER}
+        size={BannerAdSize.BANNER}
+        requestOptions={{
+          requestNonPersonalizedAdsOnly: true,
+        }}
+      />
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#fff',
-    marginBottom: 16,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: '#f4f4f5',
-    paddingVertical: 12,
+    marginVertical: 12,
+    marginHorizontal: 16,
+    padding: 24,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 250,
   },
-  adHeader: {
-    paddingHorizontal: 16,
+  title: {
+    fontSize: 18,
+    fontWeight: 'bold',
     marginBottom: 8,
   },
+  adContainer: {
+    marginVertical: 12,
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
   sponsoredText: {
+    alignSelf: 'flex-start',
+    marginLeft: 16,
     fontSize: 12,
     fontWeight: '700',
-    color: '#a1a1aa',
+    marginBottom: 8,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  adContainer: {
-    width: '100%',
-    minHeight: 250, // Height of MEDIUM_RECTANGLE
-    alignItems: 'center',
+  adWrapper: {
+    width: 300,
+    height: 250,
+    overflow: 'hidden',
+    backgroundColor: '#111',
     justifyContent: 'center',
-    backgroundColor: '#f8fafc',
+    alignItems: 'center',
   },
-  loadingContainer: {
-    ...StyleSheet.absoluteFillObject,
+  walletAdContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 1,
+    paddingVertical: 12,
+    marginVertical: 8,
   }
-})
+});

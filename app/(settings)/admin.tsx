@@ -1,4 +1,5 @@
 // app/(settings)/admin.tsx
+import { useTheme } from '../../lib/theme';
 import React, { useEffect, useState } from 'react'
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
@@ -8,12 +9,15 @@ import { Ionicons } from '@expo/vector-icons'
 import { createClient } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 
-export default function AdminScreen() {
+export default function () {
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => getStyles(colors), [colors]);
   const { user } = useAuth()
   const supabase = createClient()
   const [reports, setReports] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'reports' | 'jobs'>('reports')
+  const [activeTab, setActiveTab] = useState<'reports' | 'jobs' | 'verifications'>('reports')
+  const [verifications, setVerifications] = useState<any[]>([])
 
   // Job Form State
   const [jobTitle, setJobTitle] = useState('')
@@ -55,6 +59,15 @@ export default function AdminScreen() {
 
       setReports(Object.values(grouped).sort((a: any, b: any) => b.count - a.count))
     }
+    
+    // Fetch pending verifications
+    const { data: vData } = await supabase
+      .from('verification_requests')
+      .select('id, user_id, reason, created_at, profiles(username, full_name, avatar_url, is_verified)')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true })
+    if (vData) setVerifications(vData)
+      
     setLoading(false)
   }
 
@@ -114,6 +127,27 @@ export default function AdminScreen() {
       setSalary(''); setApplyUrl(''); setDescription('')
     }
     setPostingJob(false)
+  }
+
+  const handleVerifyRequest = async (requestId: string, userId: string, approve: boolean) => {
+    Alert.alert(
+      approve ? 'Approve Verification' : 'Reject Request',
+      `Are you sure you want to ${approve ? 'approve' : 'reject'} this request?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Confirm', 
+          style: approve ? 'default' : 'destructive',
+          onPress: async () => {
+            await supabase.from('verification_requests').update({ status: approve ? 'approved' : 'rejected' }).eq('id', requestId)
+            if (approve) {
+              await supabase.from('profiles').update({ is_verified: true }).eq('id', userId)
+            }
+            setVerifications(prev => prev.filter(v => v.id !== requestId))
+          }
+        }
+      ]
+    )
   }
 
   const renderItem = ({ item }: { item: any }) => {
@@ -176,6 +210,9 @@ export default function AdminScreen() {
         <TouchableOpacity style={[styles.tab, activeTab === 'reports' && styles.tabActive]} onPress={() => setActiveTab('reports')}>
           <Text style={[styles.tabText, activeTab === 'reports' && styles.tabTextActive]}>Reports</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={[styles.tab, activeTab === 'verifications' && styles.tabActive]} onPress={() => setActiveTab('verifications')}>
+          <Text style={[styles.tabText, activeTab === 'verifications' && styles.tabTextActive]}>Verifications</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={[styles.tab, activeTab === 'jobs' && styles.tabActive]} onPress={() => setActiveTab('jobs')}>
           <Text style={[styles.tabText, activeTab === 'jobs' && styles.tabTextActive]}>Post Job</Text>
         </TouchableOpacity>
@@ -194,6 +231,52 @@ export default function AdminScreen() {
               <Text style={styles.emptyDesc}>Your community is behaving nicely!</Text>
             </View>
           }
+        />
+      ) : activeTab === 'verifications' ? (
+        <FlatList
+          data={verifications}
+          keyExtractor={item => item.id}
+          contentContainerStyle={styles.list}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Ionicons name="checkmark-done-circle" size={48} color="#d4d4d8" />
+              <Text style={styles.emptyTitle}>No Pending Requests</Text>
+              <Text style={styles.emptyDesc}>All verification requests have been handled.</Text>
+            </View>
+          }
+          renderItem={({ item }) => {
+            const profile = item.profiles || {}
+            return (
+              <View style={styles.card}>
+                <View style={[styles.postPreview, { flexDirection: 'row', alignItems: 'center', gap: 12 }]}>
+                  {profile.avatar_url ? (
+                    <Image source={{ uri: profile.avatar_url }} style={{ width: 40, height: 40, borderRadius: 20 }} />
+                  ) : (
+                    <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#d4d4d8', justifyContent: 'center', alignItems: 'center' }}>
+                      <Text style={{ fontSize: 16, fontWeight: '700' }}>{profile.full_name?.[0] || '?'}</Text>
+                    </View>
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.posterName}>{profile.full_name}</Text>
+                    <Text style={styles.posterUsername}>@{profile.username}</Text>
+                  </View>
+                </View>
+                <View style={styles.reasonChip}>
+                  <Text style={[styles.reasonText, { color: '#3f3f46' }]}>Reason: {item.reason}</Text>
+                </View>
+                <View style={[styles.actions, { marginTop: 12 }]}>
+                  <TouchableOpacity style={[styles.btn, styles.btnDelete]} onPress={() => handleVerifyRequest(item.id, item.user_id, false)}>
+                    <Ionicons name="close" size={16} color="#dc2626" />
+                    <Text style={styles.btnDeleteText}>Reject</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.btn, { borderColor: '#2563eb', backgroundColor: '#eff6ff' }]} onPress={() => handleVerifyRequest(item.id, item.user_id, true)}>
+                    <Ionicons name="checkmark" size={16} color="#2563eb" />
+                    <Text style={{ color: '#2563eb', fontWeight: '600', fontSize: 13 }}>Approve</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )
+          }}
         />
       ) : (
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
@@ -233,24 +316,24 @@ export default function AdminScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f4f4f5' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f4f4f5' },
-  tabs: { flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e4e4e7' },
+const getStyles = (colors: any) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.border },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.border },
+  tabs: { flexDirection: 'row', backgroundColor: colors.background, borderBottomWidth: 1, borderBottomColor: colors.border },
   tab: { flex: 1, paddingVertical: 14, alignItems: 'center' },
-  tabActive: { borderBottomWidth: 2, borderBottomColor: '#000' },
-  tabText: { fontSize: 14, fontWeight: '600', color: '#71717a' },
-  tabTextActive: { color: '#000' },
+  tabActive: { borderBottomWidth: 2, borderBottomColor: colors.text },
+  tabText: { fontSize: 14, fontWeight: '600', color: colors.textDim },
+  tabTextActive: { color: colors.text },
   list: { padding: 16, gap: 16 },
-  card: { backgroundColor: '#fff', borderRadius: 16, padding: 16, elevation: 2, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { height: 2, width: 0 } },
+  card: { backgroundColor: colors.background, borderRadius: 16, padding: 16, elevation: 2, shadowColor: colors.text, shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { height: 2, width: 0 } },
   cardTop: { flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' },
   badge: { backgroundColor: '#fee2e2', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
   badgeText: { color: '#dc2626', fontSize: 12, fontWeight: '700' },
   archivedBadge: { backgroundColor: '#fef9c3', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
   archivedText: { color: '#a16207', fontSize: 12, fontWeight: '700' },
-  postPreview: { backgroundColor: '#fafafa', padding: 12, borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: '#f4f4f5' },
-  posterName: { fontSize: 14, fontWeight: '700', color: '#000' },
-  posterUsername: { fontSize: 12, color: '#71717a', marginBottom: 8 },
+  postPreview: { backgroundColor: '#fafafa', padding: 12, borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: colors.border },
+  posterName: { fontSize: 14, fontWeight: '700', color: colors.text },
+  posterUsername: { fontSize: 12, color: colors.textDim, marginBottom: 8 },
   postContent: { fontSize: 14, color: '#3f3f46', lineHeight: 20, marginBottom: 8 },
   postImage: { width: '100%', height: 140, borderRadius: 8 },
   reportReasons: { gap: 6, marginBottom: 14 },
@@ -263,14 +346,14 @@ const styles = StyleSheet.create({
   btnDelete: { borderColor: '#dc2626', backgroundColor: '#fef2f2' },
   btnDeleteText: { color: '#dc2626', fontWeight: '600', fontSize: 13 },
   empty: { alignItems: 'center', paddingTop: 80, paddingHorizontal: 32, gap: 10 },
-  emptyTitle: { fontSize: 18, fontWeight: '700', color: '#18181b' },
-  emptyDesc: { fontSize: 14, color: '#a1a1aa', textAlign: 'center' },
+  emptyTitle: { fontSize: 18, fontWeight: '700', color: colors.text },
+  emptyDesc: { fontSize: 14, color: colors.textDim, textAlign: 'center' },
   formContainer: { padding: 16 },
-  formCard: { backgroundColor: '#fff', borderRadius: 16, padding: 20 },
-  formTitle: { fontSize: 18, fontWeight: '800', color: '#000', marginBottom: 4 },
+  formCard: { backgroundColor: colors.background, borderRadius: 16, padding: 20 },
+  formTitle: { fontSize: 18, fontWeight: '800', color: colors.text, marginBottom: 4 },
   label: { fontSize: 14, fontWeight: '600', color: '#3f3f46', marginBottom: 8, marginTop: 16 },
-  input: { backgroundColor: '#f4f4f5', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13, fontSize: 15, borderWidth: 1, borderColor: '#e4e4e7', color: '#000' },
+  input: { backgroundColor: colors.border, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 13, fontSize: 15, borderWidth: 1, borderColor: colors.border, color: colors.text },
   textArea: { height: 120 },
   submitBtn: { backgroundColor: '#2563eb', paddingVertical: 15, borderRadius: 12, alignItems: 'center', marginTop: 24 },
-  submitBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  submitBtnText: { color: colors.background, fontSize: 16, fontWeight: '700' },
 })

@@ -1,4 +1,5 @@
 // app/(settings)/edit-profile.tsx
+import { useTheme } from '../../lib/theme';
 import React, { useEffect, useState } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, Switch, ActivityIndicator
@@ -7,7 +8,9 @@ import { router } from 'expo-router'
 import { createClient } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 
-export default function EditProfileScreen() {
+export default function () {
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => getStyles(colors), [colors]);
   const { user } = useAuth()
   const supabase = createClient()
   
@@ -37,9 +40,9 @@ export default function EditProfileScreen() {
         setFullName(data.full_name || '')
         setUsername(data.username || '')
         setBio(data.bio || '')
-        setTiktok(data.tiktok || '')
-        setInstagram(data.instagram || '')
-        setFacebook(data.facebook || '')
+        setTiktok(data.tiktok_url || '')
+        setInstagram(data.instagram_url || '')
+        setFacebook(data.facebook_url || '')
         setWebsite(data.website || '')
         setIsPrivate(data.is_private || false)
       }
@@ -80,9 +83,9 @@ export default function EditProfileScreen() {
         full_name: fullName.trim(),
         username: cleanUsername,
         bio: bio.trim(),
-        tiktok: tiktok.trim(),
-        instagram: instagram.trim(),
-        facebook: facebook.trim(),
+        tiktok_url: tiktok.trim(),
+        instagram_url: instagram.trim(),
+        facebook_url: facebook.trim(),
         website: website.trim(),
         is_private: isPrivate
       })
@@ -96,6 +99,35 @@ export default function EditProfileScreen() {
       Alert.alert('Success', 'Your profile has been updated.')
       router.back()
     }
+  }
+
+  const requestVerification = async () => {
+    if (!user) return
+    Alert.alert(
+      'Request Verification',
+      'Would you like to submit your profile for verification?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Submit Request', 
+          onPress: async () => {
+            const { error } = await supabase.from('verification_requests').insert({
+              user_id: user.id,
+              reason: 'Requested from Edit Profile'
+            })
+            if (error) {
+              if (error.code === '23505') {
+                Alert.alert('Notice', 'You already have a pending verification request.')
+              } else {
+                Alert.alert('Error', error.message)
+              }
+            } else {
+              Alert.alert('Success', 'Your verification request has been submitted for review.')
+            }
+          }
+        }
+      ]
+    )
   }
 
   if (loading) {
@@ -213,10 +245,20 @@ export default function EditProfileScreen() {
             <Switch
               value={isPrivate}
               onValueChange={setIsPrivate}
-              trackColor={{ false: '#e4e4e7', true: '#10b981' }}
+              trackColor={{ false: colors.border, true: '#10b981' }}
               thumbColor="#fff"
             />
           </View>
+        </View>
+
+        <Text style={styles.sectionTitle}>Verification</Text>
+        <View style={styles.sectionCard}>
+          <TouchableOpacity 
+            style={[styles.inputRow, { borderBottomWidth: 0, paddingVertical: 14 }]} 
+            onPress={requestVerification}
+          >
+            <Text style={{ color: '#3b82f6', fontWeight: '600', fontSize: 15 }}>Request Blue Checkmark</Text>
+          </TouchableOpacity>
         </View>
 
         <TouchableOpacity 
@@ -236,16 +278,16 @@ export default function EditProfileScreen() {
   )
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f4f4f5',
+    backgroundColor: '#000',
   },
   center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f4f4f5',
+    backgroundColor: '#000',
   },
   content: {
     paddingVertical: 20,
@@ -253,15 +295,13 @@ const styles = StyleSheet.create({
   },
   headerDesc: {
     fontSize: 13,
-    color: '#71717a',
+    color: colors.textDim,
     lineHeight: 18,
     marginBottom: 16,
     paddingHorizontal: 16,
   },
   sectionCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    marginHorizontal: 16,
+    backgroundColor: '#000',
     overflow: 'hidden',
     marginBottom: 24,
   },
@@ -269,26 +309,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#f4f4f5',
+    borderBottomColor: '#1a1a1a',
     paddingLeft: 16,
   },
   label: {
-    width: 90,
+    width: 110,
     fontSize: 15,
     fontWeight: '500',
-    color: '#18181b',
+    color: colors.text,
   },
   labelSocial: {
-    width: 100,
+    width: 110,
     fontSize: 15,
     fontWeight: '500',
-    color: '#18181b',
+    color: colors.text,
   },
   input: {
     flex: 1,
     height: 48,
     fontSize: 15,
-    color: '#3f3f46',
+    color: '#fff',
     paddingRight: 16,
   },
   textArea: {
@@ -299,7 +339,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#71717a',
+    color: colors.textDim,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 8,
@@ -318,16 +358,16 @@ const styles = StyleSheet.create({
   switchTitle: {
     fontSize: 15,
     fontWeight: '500',
-    color: '#18181b',
+    color: colors.text,
     marginBottom: 4,
   },
   switchDesc: {
     fontSize: 13,
-    color: '#71717a',
+    color: colors.textDim,
     lineHeight: 18,
   },
   saveButton: {
-    backgroundColor: '#000',
+    backgroundColor: colors.text,
     borderRadius: 12,
     height: 50,
     justifyContent: 'center',
@@ -335,7 +375,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
   },
   saveButtonText: {
-    color: '#fff',
+    color: colors.background,
     fontSize: 16,
     fontWeight: '600',
   }

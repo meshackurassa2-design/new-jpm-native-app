@@ -4,6 +4,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-nati
 import { Ionicons } from '@expo/vector-icons'
 import { useColorScheme } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { useTheme } from '../../lib/theme';
 
 const OPTIONS = [
   { id: 'system', label: 'System setting', icon: 'phone-portrait-outline', desc: 'Follows your device setting' },
@@ -12,44 +13,34 @@ const OPTIONS = [
 ]
 
 export default function AppearanceScreen() {
-  const scheme = useColorScheme()
-  const [selected, setSelected] = useState<'system' | 'light' | 'dark'>('system')
-
-  React.useEffect(() => {
-    AsyncStorage.getItem('theme').then(v => {
-      if (v === 'light' || v === 'dark' || v === 'system') {
-        setSelected(v)
-      }
-    })
-  }, [])
+  const { theme, colors, setTheme } = useTheme()
 
   const handleSelect = (id: 'system' | 'light' | 'dark') => {
-    setSelected(id)
-    AsyncStorage.setItem('theme', id)
+    setTheme(id)
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView style={[styles.container, { backgroundColor: colors.background }]} contentContainerStyle={styles.content}>
       <Text style={styles.sectionDesc}>Choose how the app looks for you.</Text>
 
-      <View style={styles.card}>
+      <View style={[styles.card, { backgroundColor: colors.card }]}>
         {OPTIONS.map((opt, i) => (
           <TouchableOpacity
             key={opt.id}
-            style={[styles.row, i < OPTIONS.length - 1 && styles.rowBorder]}
+            style={[styles.row, i < OPTIONS.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }]}
             onPress={() => handleSelect(opt.id as any)}
           >
             <View style={styles.rowLeft}>
-              <View style={[styles.iconWrap, selected === opt.id && styles.iconWrapActive]}>
-                <Ionicons name={opt.icon as any} size={18} color={selected === opt.id ? '#fff' : '#71717a'} />
+              <View style={[styles.iconWrap, theme === opt.id && { backgroundColor: colors.text }]}>
+                <Ionicons name={opt.icon as any} size={18} color={theme === opt.id ? colors.background : colors.textDim} />
               </View>
               <View>
-                <Text style={styles.rowLabel}>{opt.label}</Text>
+                <Text style={[styles.rowLabel, { color: colors.text }]}>{opt.label}</Text>
                 <Text style={styles.rowDesc}>{opt.desc}</Text>
               </View>
             </View>
-            <View style={[styles.radio, selected === opt.id && styles.radioSelected]}>
-              {selected === opt.id && <View style={styles.radioDot} />}
+            <View style={[styles.radio, theme === opt.id && { borderColor: colors.text }]}>
+              {theme === opt.id && <View style={[styles.radioDot, { backgroundColor: colors.text }]} />}
             </View>
           </TouchableOpacity>
         ))}

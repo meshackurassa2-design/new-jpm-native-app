@@ -1,14 +1,17 @@
 // app/(settings)/monetization.tsx
+import { useTheme } from '../../lib/theme';
 import React, { useEffect, useState } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  ActivityIndicator, ScrollView
+  ActivityIndicator, ScrollView, Alert
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { createClient } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 
-export default function MonetizationScreen() {
+export default function () {
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => getStyles(colors), [colors]);
   const { user } = useAuth()
   const supabase = createClient()
   const [profile, setProfile] = useState<any>(null)
@@ -73,7 +76,9 @@ export default function MonetizationScreen() {
               : 'Keep posting high-quality memes to unlock monetization!'}
         </Text>
         {isApproved && (
-          <TouchableOpacity style={styles.actionBtn}>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => {
+            Alert.alert('Payout Requested', 'Your payout request has been submitted. Our team will process it within 3-5 business days.');
+          }}>
             <Text style={styles.actionBtnText}>Request Payout</Text>
           </TouchableOpacity>
         )}
@@ -107,8 +112,20 @@ export default function MonetizationScreen() {
 
         {!isApproved && !isPending && (
           <TouchableOpacity 
-            style={[styles.actionBtn, { backgroundColor: '#18181b', opacity: (stats.followers >= 10000 && stats.views >= 100000) ? 1 : 0.5 }]}
+            style={[styles.actionBtn, { backgroundColor: colors.text, opacity: (stats.followers >= 10000 && stats.views >= 100000) ? 1 : 0.5 }]}
             disabled={stats.followers < 10000 || stats.views < 100000}
+            onPress={async () => {
+              if (!user) return;
+              const { error } = await supabase.from('profiles').update({
+                settings: { ...(profile.settings || {}), creator_application_status: 'pending' }
+              }).eq('id', user.id);
+              if (!error) {
+                setProfile({ ...profile, settings: { ...(profile.settings || {}), creator_application_status: 'pending' }});
+                Alert.alert('Success', 'Application submitted successfully! Our team will review your profile.');
+              } else {
+                Alert.alert('Error', 'Failed to submit application: ' + error.message);
+              }
+            }}
           >
             <Text style={styles.actionBtnText}>Apply Now</Text>
           </TouchableOpacity>
@@ -118,26 +135,26 @@ export default function MonetizationScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f4f4f5' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f4f4f5' },
+const getStyles = (colors: any) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.border },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.border },
   content: { padding: 20, paddingBottom: 60 },
-  pageDesc: { fontSize: 15, color: '#71717a', marginBottom: 20, lineHeight: 22 },
-  card: { backgroundColor: '#fff', borderRadius: 16, padding: 20, marginBottom: 16, elevation: 1, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, shadowOffset: { height: 1, width: 0 } },
-  cardLabel: { fontSize: 12, fontWeight: '700', color: '#71717a', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 10 },
-  cardValue: { fontSize: 40, fontWeight: '900', color: '#000', marginBottom: 10 },
+  pageDesc: { fontSize: 15, color: colors.textDim, marginBottom: 20, lineHeight: 22 },
+  card: { backgroundColor: colors.background, borderRadius: 16, padding: 20, marginBottom: 16, elevation: 1, shadowColor: colors.text, shadowOpacity: 0.04, shadowRadius: 6, shadowOffset: { height: 1, width: 0 } },
+  cardLabel: { fontSize: 12, fontWeight: '700', color: colors.textDim, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 10 },
+  cardValue: { fontSize: 40, fontWeight: '900', color: colors.text, marginBottom: 10 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  cardFooter: { fontSize: 12, color: '#a1a1aa' },
+  cardFooter: { fontSize: 12, color: colors.textDim },
   statusText: { fontSize: 22, fontWeight: '800', color: '#52525b', marginBottom: 8 },
   statusApproved: { color: '#16a34a' },
   statusPending: { color: '#d97706' },
-  cardDesc: { fontSize: 14, color: '#71717a', lineHeight: 21, marginBottom: 16 },
+  cardDesc: { fontSize: 14, color: colors.textDim, lineHeight: 21, marginBottom: 16 },
   reqBlock: { marginBottom: 16 },
   reqHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  reqTitle: { fontSize: 14, fontWeight: '700', color: '#18181b' },
-  reqValues: { fontSize: 13, color: '#71717a', fontWeight: '500' },
-  progressBar: { height: 8, backgroundColor: '#f4f4f5', borderRadius: 4, overflow: 'hidden' },
+  reqTitle: { fontSize: 14, fontWeight: '700', color: colors.text },
+  reqValues: { fontSize: 13, color: colors.textDim, fontWeight: '500' },
+  progressBar: { height: 8, backgroundColor: colors.border, borderRadius: 4, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: '#10b981', borderRadius: 4 },
   actionBtn: { backgroundColor: '#2563eb', paddingVertical: 13, borderRadius: 12, alignItems: 'center', marginTop: 8 },
-  actionBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  actionBtnText: { color: colors.background, fontSize: 15, fontWeight: '700' },
 })

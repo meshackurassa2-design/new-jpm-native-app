@@ -1,14 +1,23 @@
 // app/(settings)/ads.tsx
+import { useTheme } from '../../lib/theme';
 import React, { useEffect, useState } from 'react'
-import { View, Text, FlatList, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Alert, Image, ScrollView, TextInput, KeyboardAvoidingView, Platform
+import {
+  View, Text, FlatList, TouchableOpacity, StyleSheet,
+  ActivityIndicator, Alert, Image, ScrollView, TextInput,
+  KeyboardAvoidingView, Platform, Dimensions
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
 import { decode } from 'base64-arraybuffer'
 import { createClient } from '../../lib/supabase'
+import { Skeleton } from '../../components/Skeleton'
 
-export default function AdsScreen() {
+const { width: SCREEN_WIDTH } = Dimensions.get('window')
+
+export default function () {
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => getStyles(colors), [colors]);
   const supabase = createClient()
   const [ads, setAds] = useState<any[]>([])
   const [creators, setCreators] = useState<any[]>([])
@@ -19,7 +28,6 @@ export default function AdsScreen() {
   const [adTitle, setAdTitle] = useState('')
   const [adDesc, setAdDesc] = useState('')
   const [targetUrl, setTargetUrl] = useState('')
-  const [targetViews, setTargetViews] = useState('1000')
   const [image, setImage] = useState<ImagePicker.ImagePickerAsset | null>(null)
   const [postingAd, setPostingAd] = useState(false)
 
@@ -37,7 +45,6 @@ export default function AdsScreen() {
       const { data } = await supabase
         .from('profiles')
         .select('id, full_name, username, avatar_url, settings, created_at')
-        .neq('settings->creator_application_status', null)
         .eq('settings->creator_application_status', 'pending')
       setCreators(data || [])
     }
@@ -47,13 +54,11 @@ export default function AdsScreen() {
   const handleCreatorAction = async (creatorId: string, action: 'approved' | 'declined') => {
     const { data: profileData } = await supabase.from('profiles').select('settings').eq('id', creatorId).single()
     const newSettings = { ...profileData?.settings, creator_application_status: action }
-    
     const updates: any = { settings: newSettings }
     if (action === 'approved') {
       updates.monetization_enabled = true
       updates.is_verified = true
     }
-
     const { error } = await supabase.from('profiles').update(updates).eq('id', creatorId)
     if (!error) {
       Alert.alert('Success', `Creator ${action} successfully!`)
@@ -64,23 +69,34 @@ export default function AdsScreen() {
   }
 
   const deleteAd = async (id: string) => {
-    await supabase.from('direct_ads').delete().eq('id', id)
-    setAds(prev => prev.filter(a => a.id !== id))
+    Alert.alert('Delete Ad', 'Are you sure you want to delete this ad?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive', onPress: async () => {
+          await supabase.from('direct_ads').delete().eq('id', id)
+          setAds(prev => prev.filter(a => a.id !== id))
+        }
+      }
+    ])
   }
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
-      quality: 0.8,
+      quality: 0.85,
       base64: true,
     })
     if (!result.canceled) setImage(result.assets[0])
   }
 
   const handlePostAd = async () => {
-    if (!adTitle || !image || !targetUrl) {
-      Alert.alert('Error', 'Please provide a title, image, and target URL.')
+    if (!adTitle.trim()) {
+      Alert.alert('Missing Info', 'Please add an Ad Title.')
+      return
+    }
+    if (!image) {
+      Alert.alert('Missing Image', 'Please select an Ad Image.')
       return
     }
 
@@ -90,30 +106,26 @@ export default function AdsScreen() {
       if (image.base64) {
         const ext = image.uri.split('.').pop() || 'jpg'
         const fileName = `${Date.now()}_${Math.random()}.${ext}`
-        
         const { error: uploadError } = await supabase.storage
           .from('ads')
           .upload(fileName, decode(image.base64), { contentType: `image/${ext}` })
-
         if (uploadError) throw uploadError
-
         const { data: urlData } = supabase.storage.from('ads').getPublicUrl(fileName)
         imageUrl = urlData?.publicUrl
       }
 
+      // Only insert columns that actually exist in the direct_ads table
       const { error } = await supabase.from('direct_ads').insert({
-        title: adTitle,
-        description: adDesc,
-        target_url: targetUrl,
-        target_views: parseInt(targetViews) || 1000,
+        title: adTitle.trim(),
+        description: adDesc.trim() || null,
+        target_url: targetUrl.trim() || null,
         image_url: imageUrl,
-        status: 'active'
       })
 
       if (error) throw error
 
-      Alert.alert('Success', 'Ad created successfully!')
-      setAdTitle(''); setAdDesc(''); setTargetUrl(''); setTargetViews('1000'); setImage(null);
+      Alert.alert('🎉 Ad Launched!', 'Your ad is now live in the feed.')
+      setAdTitle(''); setAdDesc(''); setTargetUrl(''); setImage(null)
       setActiveTab('ads')
     } catch (e: any) {
       Alert.alert('Error', e.message)
@@ -123,39 +135,46 @@ export default function AdsScreen() {
   }
 
   const renderAd = ({ item }: { item: any }) => (
-    <View style={styles.card}>
-      {item.image_url && <Image source={{ uri: item.image_url }} style={styles.image} />}
-      <View style={styles.cardBody}>
-        <Text style={styles.cardTitle}>{item.title}</Text>
-        <Text style={styles.cardDesc}>{item.description}</Text>
-        <Text style={styles.cardStats}>Views: {item.views || 0} / {item.target_views || 1000}</Text>
+    <View style={styles.adCard}>
+      {item.image_url && (
+        <Image source={{ uri: item.image_url }} style={styles.adCardImage} resizeMode="cover" />
+      )}
+      <View style={styles.adCardBody}>
+        <View style={styles.adCardRow}>
+          <Text style={styles.adCardTitle} numberOfLines={1}>{item.title}</Text>
+          <View style={styles.liveTag}><Text style={styles.liveTagText}>LIVE</Text></View>
+        </View>
+        {!!item.description && <Text style={styles.adCardDesc} numberOfLines={2}>{item.description}</Text>}
         <TouchableOpacity style={styles.deleteBtn} onPress={() => deleteAd(item.id)}>
-          <Ionicons name="trash-outline" size={16} color="#dc2626" />
-          <Text style={styles.deleteText}>Delete Ad</Text>
+          <Ionicons name="trash-outline" size={14} color="#dc2626" />
+          <Text style={styles.deleteText}>Remove Ad</Text>
         </TouchableOpacity>
       </View>
     </View>
   )
 
   const renderCreator = ({ item }: { item: any }) => (
-    <View style={styles.card}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+    <View style={styles.creatorCard}>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         {item.avatar_url ? (
           <Image source={{ uri: item.avatar_url }} style={styles.avatar} />
         ) : (
-          <View style={styles.avatarPlaceholder}><Text>{item.username?.[0]}</Text></View>
+          <View style={styles.avatarPlaceholder}>
+            <Text style={{ color: colors.textDim, fontWeight: '700' }}>{item.username?.[0]?.toUpperCase()}</Text>
+          </View>
         )}
-        <View style={{ marginLeft: 12 }}>
-          <Text style={styles.cardTitle}>{item.full_name}</Text>
-          <Text style={styles.cardDesc}>@{item.username}</Text>
+        <View style={{ marginLeft: 12, flex: 1 }}>
+          <Text style={styles.creatorName}>{item.full_name}</Text>
+          <Text style={styles.creatorHandle}>@{item.username}</Text>
         </View>
       </View>
-      <View style={{ flexDirection: 'row', gap: 10 }}>
-        <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#16a34a' }]} onPress={() => handleCreatorAction(item.id, 'approved')}>
-          <Text style={styles.actionText}>Approve</Text>
+      <View style={styles.creatorActions}>
+        <TouchableOpacity style={styles.btnDecline} onPress={() => handleCreatorAction(item.id, 'declined')}>
+          <Text style={styles.btnDeclineText}>Decline</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#dc2626' }]} onPress={() => handleCreatorAction(item.id, 'declined')}>
-          <Text style={styles.actionText}>Decline</Text>
+        <TouchableOpacity style={styles.btnApprove} onPress={() => handleCreatorAction(item.id, 'approved')}>
+          <Ionicons name="checkmark" size={16} color="#fff" />
+          <Text style={styles.btnApproveText}>Approve</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -163,63 +182,127 @@ export default function AdsScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Tab bar */}
       <View style={styles.tabs}>
-        <TouchableOpacity style={[styles.tab, activeTab === 'ads' && styles.tabActive]} onPress={() => setActiveTab('ads')}>
-          <Text style={[styles.tabText, activeTab === 'ads' && styles.tabTextActive]}>Active Ads</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.tab, activeTab === 'create' && styles.tabActive]} onPress={() => setActiveTab('create')}>
-          <Text style={[styles.tabText, activeTab === 'create' && styles.tabTextActive]}>Create Ad</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.tab, activeTab === 'creators' && styles.tabActive]} onPress={() => setActiveTab('creators')}>
-          <Text style={[styles.tabText, activeTab === 'creators' && styles.tabTextActive]}>Creators</Text>
-        </TouchableOpacity>
+        {(['ads', 'create', 'creators'] as const).map(tab => (
+          <TouchableOpacity
+            key={tab}
+            style={[styles.tab, activeTab === tab && styles.tabActive]}
+            onPress={() => setActiveTab(tab)}
+          >
+            <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
+              {tab === 'ads' ? 'Active Ads' : tab === 'create' ? 'Create Ad' : 'Creators'}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
+      {/* CREATE AD */}
       {activeTab === 'create' ? (
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-          <ScrollView contentContainerStyle={styles.formContainer}>
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Create a New Ad</Text>
-              
-              <Text style={styles.label}>Ad Title *</Text>
-              <TextInput style={styles.input} placeholder="e.g. Summer Sale" value={adTitle} onChangeText={setAdTitle} />
+          <ScrollView contentContainerStyle={styles.formScroll} keyboardShouldPersistTaps="handled">
+            {/* Image picker - top and prominent */}
+            <TouchableOpacity style={styles.imagePickerArea} onPress={pickImage} activeOpacity={0.85}>
+              {image ? (
+                <Image source={{ uri: image.uri }} style={styles.imagePickerPreview} resizeMode="cover" />
+              ) : (
+                <View style={styles.imagePickerPlaceholder}>
+                  <Ionicons name="image-outline" size={40} color={colors.textDim} />
+                  <Text style={styles.imagePickerLabel}>Tap to add Ad Image</Text>
+                  <Text style={styles.imagePickerSub}>Square or 4:5 recommended</Text>
+                </View>
+              )}
+              {image && (
+                <View style={styles.imageEditBadge}>
+                  <Ionicons name="pencil" size={14} color="#fff" />
+                </View>
+              )}
+            </TouchableOpacity>
+
+            <View style={styles.formBody}>
+              <Text style={styles.formSectionTitle}>Ad Details</Text>
+
+              <Text style={styles.label}>Ad Title <Text style={{ color: '#ef4444' }}>*</Text></Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. Summer Sale — 50% Off"
+                placeholderTextColor="#a1a1aa"
+                value={adTitle}
+                onChangeText={setAdTitle}
+                maxLength={80}
+              />
 
               <Text style={styles.label}>Description</Text>
-              <TextInput style={styles.input} placeholder="Short subtitle" value={adDesc} onChangeText={setAdDesc} />
+              <TextInput
+                style={[styles.input, styles.inputMultiline]}
+                placeholder="Short tagline or offer details..."
+                placeholderTextColor="#a1a1aa"
+                value={adDesc}
+                onChangeText={setAdDesc}
+                multiline
+                numberOfLines={3}
+                maxLength={200}
+              />
 
-              <Text style={styles.label}>Target URL *</Text>
-              <TextInput style={styles.input} placeholder="https://" value={targetUrl} onChangeText={setTargetUrl} keyboardType="url" autoCapitalize="none" />
+              <Text style={styles.label}>Link URL</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="https://your-website.com"
+                placeholderTextColor="#a1a1aa"
+                value={targetUrl}
+                onChangeText={setTargetUrl}
+                keyboardType="url"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
 
-              <Text style={styles.label}>Target Views</Text>
-              <TextInput style={styles.input} placeholder="1000" value={targetViews} onChangeText={setTargetViews} keyboardType="numeric" />
-
-              <Text style={styles.label}>Ad Image *</Text>
-              <TouchableOpacity style={styles.imagePicker} onPress={pickImage}>
-                {image ? (
-                  <Image source={{ uri: image.uri }} style={styles.imagePreview} />
+              <TouchableOpacity
+                style={[styles.launchBtn, (!adTitle.trim() || !image) && styles.launchBtnDisabled]}
+                onPress={handlePostAd}
+                disabled={postingAd || !adTitle.trim() || !image}
+                activeOpacity={0.85}
+              >
+                {postingAd ? (
+                  <ActivityIndicator color="#fff" />
                 ) : (
                   <>
-                    <Ionicons name="image-outline" size={32} color="#a1a1aa" />
-                    <Text style={styles.imagePickerText}>Select Ad Creative</Text>
+                    <Ionicons name="megaphone-outline" size={20} color="#fff" />
+                    <Text style={styles.launchBtnText}>Launch Ad</Text>
                   </>
                 )}
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.submitBtn} onPress={handlePostAd} disabled={postingAd}>
-                {postingAd ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitBtnText}>Launch Ad</Text>}
               </TouchableOpacity>
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
+
       ) : loading ? (
-        <View style={styles.center}><ActivityIndicator size="large" color="#000" /></View>
+        /* Skeleton loading */
+        <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
+          {[1, 2, 3].map(i => (
+            <View key={i} style={styles.adCard}>
+              <Skeleton width="100%" height={160} borderRadius={0} />
+              <View style={{ padding: 14, gap: 8 }}>
+                <Skeleton width="60%" height={16} />
+                <Skeleton width="80%" height={12} />
+                <Skeleton width={100} height={28} borderRadius={6} />
+              </View>
+            </View>
+          ))}
+        </ScrollView>
+
       ) : activeTab === 'ads' ? (
         <FlatList
           data={ads}
           keyExtractor={item => item.id}
           renderItem={renderAd}
           contentContainerStyle={styles.list}
-          ListEmptyComponent={<Text style={styles.emptyText}>No active ads.</Text>}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Ionicons name="megaphone-outline" size={48} color={colors.textDim} />
+              <Text style={styles.emptyTitle}>No Active Ads</Text>
+              <Text style={styles.emptyDesc}>Tap "Create Ad" to launch your first sponsored post.</Text>
+            </View>
+          }
         />
       ) : (
         <FlatList
@@ -227,47 +310,98 @@ export default function AdsScreen() {
           keyExtractor={item => item.id}
           renderItem={renderCreator}
           contentContainerStyle={styles.list}
-          ListEmptyComponent={<Text style={styles.emptyText}>No pending creator applications.</Text>}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Ionicons name="person-outline" size={48} color={colors.textDim} />
+              <Text style={styles.emptyTitle}>No Pending Applications</Text>
+              <Text style={styles.emptyDesc}>Creator applications will appear here.</Text>
+            </View>
+          }
         />
       )}
     </View>
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f4f4f5' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  
-  
-  
-  tabs: { flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e4e4e7' },
+const getStyles = (colors: any) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
+
+  // Tabs
+  tabs: { flexDirection: 'row', backgroundColor: colors.background, borderBottomWidth: 1, borderBottomColor: colors.border },
   tab: { flex: 1, paddingVertical: 14, alignItems: 'center' },
-  tabActive: { borderBottomWidth: 2, borderBottomColor: '#000' },
-  tabText: { fontSize: 14, fontWeight: '600', color: '#71717a' },
-  tabTextActive: { color: '#000' },
-  list: { padding: 16, gap: 16 },
-  card: { backgroundColor: '#fff', borderRadius: 12, overflow: 'hidden', elevation: 2, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { height: 2, width: 0 } },
-  image: { width: '100%', height: 160 },
-  cardBody: { padding: 16 },
-  cardTitle: { fontSize: 16, fontWeight: '700', color: '#000', marginBottom: 4 },
-  cardDesc: { fontSize: 14, color: '#52525b', marginBottom: 8 },
-  cardStats: { fontSize: 12, color: '#a1a1aa', marginBottom: 12, fontWeight: '600' },
-  deleteBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', padding: 8, backgroundColor: '#fef2f2', borderRadius: 6 },
-  deleteText: { color: '#dc2626', fontSize: 13, fontWeight: '600' },
-  emptyText: { textAlign: 'center', color: '#a1a1aa', marginTop: 40, fontSize: 15 },
-  avatar: { width: 40, height: 40, borderRadius: 20 },
-  avatarPlaceholder: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#e4e4e7', justifyContent: 'center', alignItems: 'center' },
-  actionBtn: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
-  actionText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  formContainer: { padding: 16 },
-  cardTitle2: { fontSize: 18, fontWeight: '800', marginBottom: 16 },
-  label: { fontSize: 14, fontWeight: '700', color: '#000', marginBottom: 6, marginTop: 12 },
-  input: { backgroundColor: '#f4f4f5', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: 15, borderWidth: 1, borderColor: '#e4e4e7' },
-  imagePicker: { backgroundColor: '#f4f4f5', borderRadius: 12, borderWidth: 1, borderColor: '#e4e4e7', borderStyle: 'dashed', height: 160, justifyContent: 'center', alignItems: 'center', marginTop: 12, overflow: 'hidden' },
-  imagePickerText: { color: '#71717a', marginTop: 8, fontWeight: '600' },
-  imagePreview: { width: '100%', height: '100%' },
-  submitBtn: { backgroundColor: '#2563eb', paddingVertical: 16, borderRadius: 12, alignItems: 'center', marginTop: 24 },
-  submitBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  tabActive: { borderBottomWidth: 2, borderBottomColor: '#2563eb' },
+  tabText: { fontSize: 13, fontWeight: '600', color: colors.textDim },
+  tabTextActive: { color: '#2563eb' },
+
+  // Active Ads list
+  list: { padding: 16, gap: 14, paddingBottom: 40 },
+  adCard: {
+    backgroundColor: colors.background, borderRadius: 14, overflow: 'hidden',
+    shadowColor: colors.text, shadowOpacity: 0.07, shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 }, elevation: 3,
+  },
+  adCardImage: { width: '100%', height: 180 },
+  adCardBody: { padding: 14 },
+  adCardRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+  adCardTitle: { fontSize: 15, fontWeight: '700', color: colors.text, flex: 1 },
+  liveTag: { backgroundColor: 'rgba(22, 163, 74, 0.15)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, marginLeft: 8 },
+  liveTagText: { fontSize: 10, fontWeight: '800', color: '#16a34a', letterSpacing: 0.5 },
+  adCardDesc: { fontSize: 13, color: colors.textDim, lineHeight: 18, marginBottom: 10 },
+  deleteBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 10, backgroundColor: 'rgba(220, 38, 38, 0.1)', borderRadius: 8 },
+  deleteText: { color: '#dc2626', fontSize: 12, fontWeight: '700' },
+
+  // Creators
+  creatorCard: {
+    backgroundColor: colors.background, borderRadius: 14, padding: 16, marginBottom: 12,
+    shadowColor: colors.text, shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2,
+  },
+  avatar: { width: 44, height: 44, borderRadius: 22 },
+  avatarPlaceholder: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.border, justifyContent: 'center', alignItems: 'center' },
+  creatorName: { fontSize: 15, fontWeight: '700', color: colors.text },
+  creatorHandle: { fontSize: 13, color: colors.textDim, marginTop: 2 },
+  creatorActions: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  btnDecline: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: colors.border, backgroundColor: colors.background },
+  btnDeclineText: { fontSize: 14, fontWeight: '700', color: colors.text },
+  btnApprove: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', backgroundColor: '#16a34a', flexDirection: 'row', justifyContent: 'center', gap: 6 },
+  btnApproveText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+
+  // Create Ad form
+  formScroll: { paddingBottom: 40 },
+  imagePickerArea: {
+    width: SCREEN_WIDTH, height: SCREEN_WIDTH,
+    backgroundColor: colors.border,
+    position: 'relative',
+  },
+  imagePickerPreview: { width: '100%', height: '100%' },
+  imagePickerPlaceholder: {
+    flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8,
+  },
+  imagePickerLabel: { fontSize: 16, fontWeight: '700', color: colors.text },
+  imagePickerSub: { fontSize: 13, color: colors.textDim },
+  imageEditBadge: {
+    position: 'absolute', bottom: 14, right: 14,
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  formBody: { padding: 20 },
+  formSectionTitle: { fontSize: 18, fontWeight: '800', color: colors.text, marginBottom: 16 },
+  label: { fontSize: 13, fontWeight: '700', color: colors.textDim, marginBottom: 8, marginTop: 16, textTransform: 'uppercase', letterSpacing: 0.5 },
+  input: {
+    backgroundColor: colors.background, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14,
+    fontSize: 15, borderWidth: 1, borderColor: colors.border, color: colors.text,
+  },
+  inputMultiline: { minHeight: 90, textAlignVertical: 'top', paddingTop: 14 },
+  launchBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#2563eb', paddingVertical: 16, borderRadius: 14,
+    marginTop: 28, shadowColor: '#2563eb', shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 5,
+  },
+  launchBtnDisabled: { backgroundColor: '#93c5fd' },
+  launchBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+
+  // Empty
+  empty: { alignItems: 'center', paddingTop: 60, gap: 10 },
+  emptyTitle: { fontSize: 17, fontWeight: '800', color: colors.text },
+  emptyDesc: { fontSize: 14, color: colors.textDim, textAlign: 'center', paddingHorizontal: 32 },
 })
-
-

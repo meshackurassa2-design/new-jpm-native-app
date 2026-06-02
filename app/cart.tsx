@@ -1,4 +1,5 @@
 // app/cart.tsx
+import { useTheme } from '../lib/theme';
 import React, { useState } from 'react'
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
@@ -13,7 +14,9 @@ import { useAuth } from '../lib/auth'
 import uuid from 'react-native-uuid'
 import { BackButton } from '../components/BackButton'
 
-export default function CartScreen() {
+export default function () {
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => getStyles(colors), [colors]);
   const { items, removeFromCart, cartTotal, clearCart } = useCart()
   const { user } = useAuth()
   const supabase = createClient()
@@ -97,8 +100,8 @@ export default function CartScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+const getStyles = (colors: any) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -106,44 +109,44 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#f4f4f5',
+    borderBottomColor: colors.border,
   },
   backBtn: { width: 40, alignItems: 'flex-start' },
-  headerTitle: { fontSize: 18, fontWeight: '800', color: '#000' },
+  headerTitle: { fontSize: 18, fontWeight: '800', color: colors.text },
   listContent: { padding: 16 },
   cartItem: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 16,
     padding: 12,
-    backgroundColor: '#fafafa',
+    backgroundColor: colors.background,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#f4f4f5',
+    borderColor: colors.border,
   },
   itemImage: {
     width: 64, height: 64,
     borderRadius: 12,
-    backgroundColor: '#f4f4f5',
+    backgroundColor: colors.border,
     marginRight: 12,
   },
   placeholderImg: { justifyContent: 'center', alignItems: 'center' },
   itemInfo: { flex: 1 },
-  itemName: { fontSize: 15, fontWeight: '600', color: '#000', marginBottom: 4 },
-  itemShop: { fontSize: 13, color: '#71717a', marginBottom: 4 },
+  itemName: { fontSize: 15, fontWeight: '600', color: colors.text, marginBottom: 4 },
+  itemShop: { fontSize: 13, color: colors.textDim, marginBottom: 4 },
   itemPrice: { fontSize: 14, fontWeight: '700', color: '#2563eb' },
   removeBtn: { padding: 8 },
   
   emptyState: { alignItems: 'center', justifyContent: 'center', paddingTop: 100 },
-  emptyText: { fontSize: 18, fontWeight: '600', color: '#71717a', marginTop: 16 },
-  shopBtn: { marginTop: 24, paddingHorizontal: 24, paddingVertical: 12, backgroundColor: '#f4f4f5', borderRadius: 20 },
-  shopBtnText: { fontSize: 15, fontWeight: '600', color: '#000' },
+  emptyText: { fontSize: 18, fontWeight: '600', color: colors.textDim, marginTop: 16 },
+  shopBtn: { marginTop: 24, paddingHorizontal: 24, paddingVertical: 12, backgroundColor: colors.border, borderRadius: 20 },
+  shopBtnText: { fontSize: 15, fontWeight: '600', color: colors.text },
 
   footer: {
     padding: 24,
     borderTopWidth: 1,
-    borderTopColor: '#f4f4f5',
-    backgroundColor: '#fff',
+    borderTopColor: colors.border,
+    backgroundColor: colors.background,
   },
   totalRow: {
     flexDirection: 'row',
@@ -151,14 +154,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
   },
-  totalLabel: { fontSize: 16, color: '#71717a' },
-  totalAmount: { fontSize: 24, fontWeight: '800', color: '#000' },
+  totalLabel: { fontSize: 16, color: colors.textDim },
+  totalAmount: { fontSize: 24, fontWeight: '800', color: colors.text },
   checkoutBtn: {
     height: 56,
-    backgroundColor: '#000',
+    backgroundColor: colors.text,
     borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  checkoutText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  checkoutText: { color: colors.background, fontSize: 16, fontWeight: '700' },
 })

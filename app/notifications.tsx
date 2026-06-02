@@ -1,4 +1,5 @@
 // app/notifications.tsx
+import { useTheme } from '../lib/theme';
 import React, { useEffect, useState, useCallback } from 'react'
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
@@ -27,7 +28,9 @@ type Notification = {
   }
 }
 
-export default function NotificationsScreen() {
+export default function () {
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => getStyles(colors), [colors]);
   const { user } = useAuth()
   const supabase = createClient()
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -95,7 +98,7 @@ export default function NotificationsScreen() {
       case 'like': return '#ef4444' // Red
       case 'comment': return '#3b82f6' // Blue
       case 'follow': return '#8b5cf6' // Purple
-      default: return '#71717a'
+      default: return colors.textDim
     }
   }
 
@@ -189,37 +192,37 @@ export default function NotificationsScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+const getStyles = (colors: any) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: {
-    flexDirection: 'row', alignItems: 'center',
+    flexDirection: 'row', alignItems: 'center', gap: 16,
     paddingHorizontal: 16, paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: '#f4f4f5',
+    borderBottomWidth: 1, borderBottomColor: colors.border,
   },
   backBtn: { padding: 4, marginRight: 8 },
-  title: { fontSize: 22, fontWeight: '800', color: '#000' },
+  title: { fontSize: 22, fontWeight: '800', color: colors.text },
   row: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 16, paddingVertical: 14,
-    borderBottomWidth: 1, borderBottomColor: '#f4f4f5',
+    borderBottomWidth: 1, borderBottomColor: colors.border,
   },
   rowUnread: { backgroundColor: '#f0f9ff' },
   avatarContainer: { position: 'relative' },
   avatar: { width: 48, height: 48, borderRadius: 24 },
-  avatarFallback: { backgroundColor: '#e4e4e7', justifyContent: 'center', alignItems: 'center' },
-  avatarText: { fontSize: 20, fontWeight: '700', color: '#71717a' },
+  avatarFallback: { backgroundColor: colors.border, justifyContent: 'center', alignItems: 'center' },
+  avatarText: { fontSize: 20, fontWeight: '700', color: colors.textDim },
   badge: {
     position: 'absolute', bottom: -2, right: -2,
     width: 20, height: 20, borderRadius: 10,
     justifyContent: 'center', alignItems: 'center',
-    borderWidth: 2, borderColor: '#fff'
+    borderWidth: 2, borderColor: colors.background
   },
   content: { flex: 1 },
   headerLine: { flexDirection: 'row', alignItems: 'center' },
-  name: { fontSize: 15, fontWeight: '700', color: '#000', maxWidth: '75%' },
-  time: { fontSize: 13, color: '#a1a1aa', marginLeft: 8 },
+  name: { fontSize: 15, fontWeight: '700', color: colors.text, maxWidth: '75%' },
+  time: { fontSize: 13, color: colors.textDim, marginLeft: 8 },
   actionText: { fontSize: 14, color: '#52525b', marginTop: 2 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 100, gap: 12 },
-  emptyText: { fontSize: 16, color: '#a1a1aa' },
+  emptyText: { fontSize: 16, color: colors.textDim },
 })

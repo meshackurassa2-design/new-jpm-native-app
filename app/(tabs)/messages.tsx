@@ -1,8 +1,9 @@
 // app/(tabs)/messages.tsx — Messages list screen
+import { useTheme } from '../../lib/theme';
 import React, { useEffect, useState, useCallback } from 'react'
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
-  Image, ActivityIndicator, TextInput, ScrollView, Modal, TouchableWithoutFeedback
+  Image, ActivityIndicator, TextInput, ScrollView, Modal, TouchableWithoutFeedback, Alert
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
@@ -12,7 +13,9 @@ import { useAuth } from '../../lib/auth'
 import { decryptMessage, getSharedSecret } from '../../lib/crypto'
 import { Skeleton } from '../../components/Skeleton'
 
-export default function MessagesScreen() {
+export default function () {
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => getStyles(colors), [colors]);
   const { user } = useAuth()
   const supabase = createClient()
   const [convos, setConvos] = useState<any[]>([])
@@ -93,7 +96,7 @@ export default function MessagesScreen() {
       if (latestMsg?.content) {
         try {
           console.log(`Decrypting for ${p.id}...`)
-          decryptedContent = await decryptMessage(latestMsg.content, getSharedSecret(user.id, p.id))
+          decryptedContent = await decryptMessage(latestMsg.content, getSharedSecret(user.id, p.id), true)
           console.log(`Decrypted for ${p.id} successfully`)
         } catch {
           decryptedContent = '📷 Media'
@@ -121,8 +124,9 @@ export default function MessagesScreen() {
     
     setInboundRequests(reqData || [])
 
-    } catch (e) {
+    } catch (e: any) {
       console.error('Error fetching conversations:', e)
+      Alert.alert('Fetch Error', e.message || String(e))
     } finally {
       console.log('Finally block reached, setting loading false')
       setLoading(false)
@@ -144,10 +148,25 @@ export default function MessagesScreen() {
 
   useEffect(() => { fetchConversations() }, [fetchConversations])
 
+  useEffect(() => {
+    if (!user) return
+
+    const channel = supabase.channel('messages_inbox')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload: any) => {
+        const row = payload.new || payload.old
+        if (row && (row.receiver_id === user.id || row.sender_id === user.id)) {
+          fetchConversations()
+        }
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [user, fetchConversations])
+
   // Apply search + filter
   let filtered = convos.filter(c =>
-    c.profile.full_name?.toLowerCase().includes(search.toLowerCase()) ||
-    c.profile.username?.toLowerCase().includes(search.toLowerCase())
+    (c.profile.full_name?.toLowerCase() || '').includes(search.toLowerCase()) ||
+    (c.profile.username?.toLowerCase() || '').includes(search.toLowerCase())
   )
   if (activeFilter === 'Unread') {
     filtered = filtered.filter(c => c.unread > 0)
@@ -171,7 +190,7 @@ export default function MessagesScreen() {
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
           <Text style={styles.title}>Messages</Text>
-          <TouchableOpacity onPress={() => {}}>
+          <TouchableOpacity onPress={() => Alert.alert('New Message', 'Feature coming soon!')}>
             <Ionicons name="create-outline" size={26} color="#000" />
           </TouchableOpacity>
         </View>
@@ -194,7 +213,7 @@ export default function MessagesScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.title}>Messages</Text>
-        <TouchableOpacity onPress={() => {}}>
+        <TouchableOpacity onPress={() => Alert.alert('New Message', 'Feature coming soon!')}>
           <Ionicons name="create-outline" size={26} color="#000" />
         </TouchableOpacity>
       </View>
@@ -364,15 +383,15 @@ export default function MessagesScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' },
+const getStyles = (colors: any) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
   
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16,
   },
-  title: { fontSize: 32, fontWeight: '900', color: '#18181b', letterSpacing: -0.5 },
+  title: { fontSize: 32, fontWeight: '900', color: colors.text, letterSpacing: -0.5 },
   
   // Top Bar with Filter Button
   topBar: {
@@ -381,76 +400,76 @@ const styles = StyleSheet.create({
   },
   filterMenuBtn: {
     width: 44, height: 44, borderRadius: 22,
-    borderWidth: 1, borderColor: '#e4e4e7',
+    borderWidth: 1, borderColor: colors.border,
     justifyContent: 'center', alignItems: 'center',
-    backgroundColor: '#fff'
+    backgroundColor: colors.background
   },
   filterActiveDot: {
     position: 'absolute', top: 10, right: 10,
     width: 8, height: 8, borderRadius: 4, backgroundColor: '#2563eb',
-    borderWidth: 1, borderColor: '#fff'
+    borderWidth: 1, borderColor: colors.background
   },
 
   // Segmented Control Tabs
   tabsRow: { 
     flexDirection: 'row', 
     marginHorizontal: 16, marginBottom: 16,
-    backgroundColor: '#f4f4f5',
+    backgroundColor: colors.border,
     borderRadius: 20,
     padding: 4,
   },
   tab: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 16 },
-  tabActive: { backgroundColor: '#fff', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 },
-  tabText: { fontSize: 14, fontWeight: '600', color: '#71717a' },
-  tabTextActive: { color: '#18181b' },
+  tabActive: { backgroundColor: colors.background, shadowColor: colors.text, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 },
+  tabText: { fontSize: 14, fontWeight: '600', color: colors.textDim },
+  tabTextActive: { color: colors.text },
 
   // Search Bar
   searchBox: {
     flexDirection: 'row', alignItems: 'center',
     marginHorizontal: 16, marginBottom: 12,
-    backgroundColor: '#f4f4f5', borderRadius: 16,
+    backgroundColor: colors.border, borderRadius: 16,
     paddingHorizontal: 14, paddingVertical: 10,
   },
-  searchInput: { flex: 1, fontSize: 16, color: '#18181b' },
+  searchInput: { flex: 1, fontSize: 16, color: colors.text },
 
   // List Rows
   row: {
     flexDirection: 'row', alignItems: 'center', gap: 14,
     paddingHorizontal: 16, paddingVertical: 10,
   },
-  avatar: { width: 56, height: 56, borderRadius: 28, borderWidth: StyleSheet.hairlineWidth, borderColor: '#e4e4e7' },
-  avatarFallback: { backgroundColor: '#e4e4e7', justifyContent: 'center', alignItems: 'center', borderWidth: 0 },
-  avatarText: { fontSize: 22, fontWeight: '700', color: '#71717a' },
-  name: { fontSize: 16, fontWeight: '700', color: '#18181b' },
-  username: { fontSize: 14, color: '#71717a', marginTop: 1 },
-  lastMessage: { fontSize: 14, color: '#71717a', marginTop: 3 },
-  lastMessageUnread: { fontWeight: '700', color: '#18181b' },
+  avatar: { width: 56, height: 56, borderRadius: 28, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+  avatarFallback: { backgroundColor: colors.border, justifyContent: 'center', alignItems: 'center', borderWidth: 0 },
+  avatarText: { fontSize: 22, fontWeight: '700', color: colors.textDim },
+  name: { fontSize: 16, fontWeight: '700', color: colors.text },
+  username: { fontSize: 14, color: colors.textDim, marginTop: 1 },
+  lastMessage: { fontSize: 14, color: colors.textDim, marginTop: 3 },
+  lastMessageUnread: { fontWeight: '700', color: colors.text },
   
-  timeText: { fontSize: 12, color: '#a1a1aa', fontWeight: '500' },
+  timeText: { fontSize: 12, color: colors.textDim, fontWeight: '500' },
   badgeCol: { alignItems: 'flex-end', gap: 6 },
   badge: {
     minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6,
     backgroundColor: '#2563eb', justifyContent: 'center', alignItems: 'center',
   },
-  badgeText: { color: '#fff', fontSize: 11, fontWeight: '800' },
+  badgeText: { color: colors.background, fontSize: 11, fontWeight: '800' },
 
   // Request Buttons
   btnDecline: {
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
-    backgroundColor: '#f4f4f5', justifyContent: 'center'
+    backgroundColor: colors.border, justifyContent: 'center'
   },
   btnDeclineText: { fontSize: 13, fontWeight: '700', color: '#52525b' },
   btnAccept: {
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
     backgroundColor: '#2563eb', justifyContent: 'center'
   },
-  btnAcceptText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+  btnAcceptText: { fontSize: 13, fontWeight: '700', color: colors.background },
 
   // Empty States
   empty: { paddingTop: 60, alignItems: 'center', gap: 16 },
-  emptyIconContainer: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#f4f4f5', justifyContent: 'center', alignItems: 'center' },
-  emptyTitle: { fontSize: 18, fontWeight: '800', color: '#18181b' },
-  emptyText: { fontSize: 15, color: '#71717a', textAlign: 'center', maxWidth: '80%', lineHeight: 22 },
+  emptyIconContainer: { width: 80, height: 80, borderRadius: 40, backgroundColor: colors.border, justifyContent: 'center', alignItems: 'center' },
+  emptyTitle: { fontSize: 18, fontWeight: '800', color: colors.text },
+  emptyText: { fontSize: 15, color: colors.textDim, textAlign: 'center', maxWidth: '80%', lineHeight: 22 },
 
   // Modal
   modalOverlay: {
@@ -458,19 +477,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
   },
   modalContent: {
-    width: '80%', backgroundColor: '#fff', borderRadius: 24,
+    width: '80%', backgroundColor: colors.background, borderRadius: 24,
     paddingVertical: 12, overflow: 'hidden'
   },
   modalHeader: {
     paddingHorizontal: 20, paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#f4f4f5'
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border
   },
-  modalTitle: { fontSize: 12, fontWeight: '800', color: '#a1a1aa', letterSpacing: 1 },
+  modalTitle: { fontSize: 12, fontWeight: '800', color: colors.textDim, letterSpacing: 1 },
   modalOption: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 20, paddingVertical: 14,
   },
   modalOptionText: { fontSize: 16, fontWeight: '600', color: '#3f3f46' },
-  modalOptionTextActive: { color: '#18181b', fontWeight: '800' },
+  modalOptionTextActive: { color: colors.text, fontWeight: '800' },
 })
 
