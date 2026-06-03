@@ -18,22 +18,6 @@ export default function WebRightSidebar() {
             style={[styles.searchInput, { color: colors.text }]}
           />
         </View>
-
-        {/* What's Happening */}
-        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.text }]}>What's happening</Text>
-          
-          <View style={styles.trendItem}>
-            <Text style={[styles.trendCategory, { color: colors.textDim }]}>Trending in Tanzania</Text>
-            <Text style={[styles.trendName, { color: colors.text }]}>#JPM</Text>
-            <Text style={[styles.trendStats, { color: colors.textDim }]}>25.4K Posts</Text>
-          </View>
-          <View style={styles.trendItem}>
-            <Text style={[styles.trendCategory, { color: colors.textDim }]}>Technology · Trending</Text>
-            <Text style={[styles.trendName, { color: colors.text }]}>React Native Web</Text>
-            <Text style={[styles.trendStats, { color: colors.textDim }]}>10.2K Posts</Text>
-          </View>
-        </View>
       </View>
     </View>
   );

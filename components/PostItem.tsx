@@ -292,8 +292,9 @@ const getStyles = (colors: any) => StyleSheet.create({
     textAlign: 'center' // To match screenshot centered text
   },
   postImage: { 
-    width: width, // Full width edge-to-edge
-    height: width * 1.1, // To make it tall like the screenshot
+    width: '100%', 
+    aspectRatio: 0.8,
+    maxHeight: 600,
     backgroundColor: colors.border 
   },
   actions: { 
