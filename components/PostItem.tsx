@@ -167,7 +167,7 @@ export function PostItem({ post: initialPost }: { post: PostType }) {
       </TouchableOpacity>
 
       {hasVideo && (
-        <View style={{ width: '100%' }}>
+        <View style={{ width: '100%', paddingHorizontal: 16, paddingBottom: 12 }}>
           <Video
             ref={videoRef}
             source={{ uri: getCDNUrl(post.video_url) || '' }}
@@ -181,11 +181,11 @@ export function PostItem({ post: initialPost }: { post: PostType }) {
       )}
 
       {hasImage && !hasVideo && (
-        <TouchableOpacity onPress={() => router.push(`/post/${post.id}`)} activeOpacity={0.95}>
+        <TouchableOpacity onPress={() => router.push(`/post/${post.id}`)} activeOpacity={0.95} style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
           <Image
             source={{ uri: getCDNUrl(post.image_urls![0]) || '' }}
             style={styles.postImage}
-            resizeMode="cover"
+            resizeMode="contain"
           />
         </TouchableOpacity>
       )}
@@ -293,9 +293,10 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   postImage: { 
     width: '100%', 
-    aspectRatio: 0.8,
-    maxHeight: 600,
-    backgroundColor: colors.border 
+    aspectRatio: 1.33, // 4:3 landscape ratio
+    maxHeight: 500,
+    backgroundColor: colors.border,
+    borderRadius: 12,
   },
   actions: { 
     flexDirection: 'row', 
