@@ -4,7 +4,6 @@ import { useEffect, useRef } from 'react'
 import { Stack } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
-import { Platform, useWindowDimensions, View } from 'react-native'
 import { AuthProvider, useAuth } from '../lib/auth'
 import { CartProvider } from '../lib/cart'
 import { createClient } from '../lib/supabase'
@@ -97,21 +96,8 @@ function AutoUpdateSetup() {
 }
 
 export default function RootLayout() {
-  const { width } = useWindowDimensions();
-  const isWebDesktop = Platform.OS === 'web' && width >= 768;
-
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <View style={[
-        { flex: 1, backgroundColor: '#000', width: '100%' },
-        isWebDesktop && {
-          alignSelf: 'center',
-          maxWidth: 600,
-          borderLeftWidth: 1,
-          borderRightWidth: 1,
-          borderColor: '#222'
-        }
-      ]}>
       <ThemeProvider>
         <AuthProvider>
           <CartProvider>
@@ -138,7 +124,6 @@ export default function RootLayout() {
           </CartProvider>
         </AuthProvider>
       </ThemeProvider>
-      </View>
     </GestureHandlerRootView>
   )
 }

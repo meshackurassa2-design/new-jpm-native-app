@@ -8,6 +8,9 @@ import { useTheme } from '../../lib/theme';
 import { useUI } from '../../lib/ui';
 import { useEffect, useRef } from 'react'
 import Svg, { Path } from 'react-native-svg'
+import WebSidebar from '../../components/web/WebSidebar';
+import WebRightSidebar from '../../components/web/WebRightSidebar';
+import { useWindowDimensions } from 'react-native';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets()
@@ -16,6 +19,12 @@ export default function TabLayout() {
   const tabHeight = 56 + insets.bottom
   
   const anim = useRef(new Animated.Value(0)).current
+  const { width } = useWindowDimensions();
+
+  const isWeb = Platform.OS === 'web';
+  const isDesktop = isWeb && width >= 1024;
+  const isTablet = isWeb && width >= 768 && width < 1024;
+  const isMobile = !isDesktop && !isTablet;
 
   useEffect(() => {
     Animated.spring(anim, {
@@ -26,7 +35,7 @@ export default function TabLayout() {
     }).start()
   }, [isTabBarVisible])
 
-  return (
+  const renderTabs = () => (
     <Animated.View style={{ flex: 1, backgroundColor: colors.background }}>
       <Tabs
         screenOptions={{
@@ -34,7 +43,7 @@ export default function TabLayout() {
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.textDim,
           tabBarShowLabel: false,
-          tabBarStyle: {
+          tabBarStyle: isMobile ? {
             position: 'absolute',
             bottom: 0,
             left: 0,
@@ -47,7 +56,7 @@ export default function TabLayout() {
             elevation: 0,
             shadowOpacity: 0,
             transform: [{ translateY: anim }]
-          },
+          } : { display: 'none' },
           tabBarItemStyle: {
             paddingVertical: 8,
           },
@@ -146,4 +155,24 @@ export default function TabLayout() {
     </Tabs>
     </Animated.View>
   )
+
+  if (isDesktop || isTablet) {
+    return (
+      <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', backgroundColor: colors.background }}>
+        <WebSidebar isTablet={isTablet} />
+        
+        <View style={{ width: '100%', maxWidth: 600, borderLeftWidth: 1, borderRightWidth: 1, borderColor: colors.border }}>
+          {renderTabs()}
+        </View>
+        
+        {isDesktop ? (
+          <WebRightSidebar />
+        ) : (
+          <View style={{ flex: 1 }} />
+        )}
+      </View>
+    );
+  }
+
+  return renderTabs();
 }
