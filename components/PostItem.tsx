@@ -185,7 +185,7 @@ export function PostItem({ post: initialPost }: { post: PostType }) {
           <Image
             source={{ uri: getCDNUrl(post.image_urls![0]) || '' }}
             style={styles.postImage}
-            resizeMode="contain"
+            resizeMode="cover"
           />
         </TouchableOpacity>
       )}
@@ -293,10 +293,10 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   postImage: { 
     width: '100%', 
-    aspectRatio: 1.33, // 4:3 landscape ratio
-    maxHeight: 500,
+    height: 300,
     backgroundColor: colors.border,
     borderRadius: 12,
+    overflow: 'hidden',
   },
   actions: { 
     flexDirection: 'row', 
