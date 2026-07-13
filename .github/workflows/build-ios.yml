@@ -1,0 +1,58 @@
+name: Build iOS IPA
+
+on:
+  push:
+    branches: [ "master", "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Expo Prebuild
+        run: npx expo prebuild --platform ios --clean
+
+      - name: Build iOS App (Unsigned)
+        run: |
+          cd ios
+          # Build the .app using xcodebuild. We disable code signing so it succeeds without Apple Certificates.
+          xcodebuild -workspace JPM.xcworkspace -scheme JPM -sdk iphoneos -configuration Release clean build -derivedDataPath $PWD/DerivedData CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" COMPILER_INDEX_STORE_ENABLE=NO
+
+      - name: Export IPA (Unsigned)
+        run: |
+          # Find the built .app directory
+          APP_PATH=$(find ios/DerivedData/Build/Products/Release-iphoneos -name "*.app" | head -n 1)
+          APP_NAME=$(basename "$APP_PATH")
+          
+          # Move to the directory containing the .app
+          cd $(dirname "$APP_PATH")
+          
+          # Create Payload directory
+          mkdir Payload
+          
+          # Copy the .app into Payload
+          cp -r "$APP_NAME" Payload/
+          
+          # Zip it up as an IPA
+          zip -r App.ipa Payload
+          
+          # Move the IPA back to the workspace root for artifact upload
+          mv App.ipa "$GITHUB_WORKSPACE/jpm-app-unsigned.ipa"
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa-unsigned
+          path: jpm-app-unsigned.ipa
