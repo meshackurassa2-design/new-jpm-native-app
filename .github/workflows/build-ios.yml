@@ -35,8 +35,12 @@ jobs:
       - name: Build iOS App (Unsigned)
         run: |
           cd ios
+          # Find the generated workspace
+          WORKSPACE=$(ls -1 *.xcworkspace | head -n 1)
+          SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+          echo "Building Workspace: $WORKSPACE with Scheme: $SCHEME"
           # Build the .app using xcodebuild. We disable code signing so it succeeds without Apple Certificates.
-          xcodebuild -workspace JPM.xcworkspace -scheme JPM -sdk iphoneos -configuration Release clean build -derivedDataPath $PWD/DerivedData CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" COMPILER_INDEX_STORE_ENABLE=NO
+          xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" -sdk iphoneos -configuration Release clean build -derivedDataPath $PWD/DerivedData CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" COMPILER_INDEX_STORE_ENABLE=NO
 
       - name: Export IPA (Unsigned)
         run: |
