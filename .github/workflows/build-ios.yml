@@ -25,6 +25,10 @@ jobs:
           rm -f package-lock.json
           npm install
 
+      - name: Patch ExpoHead.podspec
+        run: |
+          sed -i '' 's/add_dependency(s, "RNScreens")/s.dependency "RNScreens"/g' node_modules/expo-router/ios/ExpoHead.podspec
+
       - name: Expo Prebuild
         run: npx expo prebuild --platform ios --clean
 
